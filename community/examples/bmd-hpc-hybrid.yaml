@@ -1,0 +1,213 @@
+# Biomatter hybrid Slurm: cloud nodes for the on-prem cluster bmd-hpc.
+#
+# Based on community/examples/hpc-slurm6-hybrid.yaml (Cluster Toolkit v1.109.0).
+# The controller and login nodes are on-prem (bmd-ansible). This blueprint
+# only creates the cloud side: firewall rules in the existing network, the
+# nodesets and partitions, and the files the on-prem controller needs
+# (cloud.conf, resume/suspend scripts).
+#
+# Differences from upstream that shape this file:
+# - No network is created: the nodes use the existing subnet of the project.
+# - No image is built here: the nodes boot our images, families bmd-hpc-cpu
+#   and bmd-hpc-gpu, built by bmd-packer (hpc/) with our Slurm version, ids
+#   and key. Upstream's image groups are removed.
+# See bmd/README.md.
+#
+# Values come from an untracked deployment file that Ansible on the operator
+# generates from bmd-ansible group_vars/hpc (role hpc_cloud_deploy), which
+# also sets the Terraform state bucket (terraform_backend_defaults):
+#   gcluster create community/examples/bmd-hpc-hybrid.yaml -d bmd-hpc-hybrid-deployment.yaml
+#
+# Vars left without a value are set ONLY by that deployment file, from
+# bmd-ansible (their single source). gcluster refuses to run while one is
+# missing ("deployment variable ... was not set"), so a run without the file
+# fails instead of using a stale copy. Do not add defaults for them here.
+
+ai_assisted: true
+
+blueprint_name: bmd-hpc-hybrid
+
+vars:
+  # ---- GCP (bmd-ansible group_vars/hpc) ----
+  project_id:
+  region:
+  zone:
+  deployment_name: bmd-hpc-hybrid
+
+  # The existing network and subnet the nodes live in. The subnet's range
+  # must not overlap anything on-prem (10.16.x, 192.168.x).
+  network_name:
+  subnetwork_name:
+
+  # Service account the nodes run as. Its rights come from the custom role
+  # granted to it; the blueprint grants nothing.
+  compute_service_account_email:
+
+  # Existing bucket for the cluster's config files (config.yaml and the
+  # like), created beforehand. The nodes read it at boot, the controller's
+  # resume/suspend scripts too. Created by hand so its IAM is explicit and
+  # the deployer needs no rights to change bucket policies.
+  slurm_bucket_name:
+
+  # ---- On-prem cluster (bmd-ansible group_vars/hpc) ----
+  cluster_name:
+  slurm_version:
+  slurm_uid:
+  slurm_gid:
+  onprem_ctld_host:
+  onprem_ctld_addr:
+  # Hosts that open connections to slurmd on the cloud nodes: the controller
+  # and the login node (srun). Never 0.0.0.0/0.
+  onprem_slurm_ranges:
+
+  # Controller paths of our deb install (not the /slurm/dev/... layout of the
+  # upstream guide). resume.py and suspend.py run on the controller and call
+  # scontrol from slurm_bin_dir.
+  onprem_slurm_bin_dir: /usr/bin
+  onprem_slurm_log_dir: /var/log/slurm
+  # Where the generated scripts and cloud*.conf go on the controller.
+  # bmd-ansible unpacks config.tgz there; cloud.conf points at this path.
+  onprem_cloud_dir: /etc/slurm/cloud
+
+  # Where gcluster writes the hybrid files on the operator (config.tgz).
+  output_dir: /opt/cluster-toolkit-deployments/$(vars.deployment_name)/hybrid-files
+
+  # ---- Images (bmd-packer hpc/) ----
+  # Families, so a newer image in the family is used by nodes created after
+  # the next deploy. Boot disks are the images' sizes.
+  cpu_image:
+    family: bmd-hpc-cpu
+    project: $(vars.project_id)
+  gpu_image:
+    family: bmd-hpc-gpu
+    project: $(vars.project_id)
+  cpu_disk_size_gb: 64
+  gpu_disk_size_gb: 128
+
+  # Network tag on every cloud node; the firewall rules target it.
+  node_tag: bmd-hpc-node
+
+  # Node metadata. Project-wide SSH keys would create local users with sudo
+  # on the nodes (Google's guest agent); our images have the ansible account
+  # and our users instead. OS Login is turned off with enable_oslogin.
+  node_metadata:
+    block-project-ssh-keys: "TRUE"
+
+deployment_groups:
+- group: cluster
+  modules:
+  - id: network
+    source: modules/network/pre-existing-vpc
+    settings:
+      network_name: $(vars.network_name)
+      subnetwork_name: $(vars.subnetwork_name)
+
+  - id: firewall
+    source: modules/network/firewall-rules
+    use: [network]
+    settings:
+      ingress_rules:
+      - name: bmd-hpc-slurmd-from-onprem
+        description: slurmd on cloud nodes, from the on-prem controller and login node
+        source_ranges: $(vars.onprem_slurm_ranges)
+        target_tags: [$(vars.node_tag)]
+        allow:
+        - protocol: tcp
+          ports: ["6818"]
+      - name: bmd-hpc-node-to-node
+        description: Everything between cloud nodes (slurmd, job steps, MPI)
+        source_tags: [$(vars.node_tag)]
+        target_tags: [$(vars.node_tag)]
+        allow:
+        - protocol: tcp
+        - protocol: udp
+        - protocol: icmp
+
+  # Partition names follow the cluster-wide scheme (bmd-ansible,
+  # roles/slurmctld_install/README.md "Partition names"):
+  #   CPU <where><cpus>c<ram GB>r[spot], GPU <where><model>g<gpu GB>r[spot]
+  # Node names become <cluster_name>-<nodeset name>-<n>.
+  #
+  # Testing sizes. exclusive: false keeps a node for several jobs until it
+  # has been idle for suspend_time (300 s), instead of deleting it after
+  # every job.
+
+  - id: gcp8c32rspot_nodeset
+    source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+    use: [network]
+    settings:
+      name: gcp8c32rspot
+      machine_type: n2-standard-8      # 8 vCPU, 32 GB
+      enable_spot_vm: true
+      node_count_dynamic_max: 2
+      enable_placement: false
+      instance_image: $(vars.cpu_image)
+      instance_image_custom: true
+      disk_size_gb: $(vars.cpu_disk_size_gb)
+      disk_type: pd-balanced
+      service_account_email: $(vars.compute_service_account_email)
+      enable_oslogin: false
+      metadata: $(vars.node_metadata)
+      tags: [$(vars.node_tag)]
+
+  - id: gcp8c32rspot_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    use: [gcp8c32rspot_nodeset]
+    settings:
+      partition_name: gcp8c32rspot
+      exclusive: false
+      # The on-prem partition stays the default.
+      is_default: false
+
+  - id: gcpl4g24r_nodeset
+    source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+    use: [network]
+    settings:
+      name: gcpl4g24r
+      machine_type: g2-standard-8      # 1x L4 24 GB, 8 vCPU, 32 GB
+      node_count_dynamic_max: 1
+      enable_placement: false
+      instance_image: $(vars.gpu_image)
+      instance_image_custom: true
+      disk_size_gb: $(vars.gpu_disk_size_gb)
+      disk_type: pd-balanced
+      service_account_email: $(vars.compute_service_account_email)
+      enable_oslogin: false
+      metadata: $(vars.node_metadata)
+      tags: [$(vars.node_tag)]
+
+  - id: gcpl4g24r_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    use: [gcpl4g24r_nodeset]
+    settings:
+      partition_name: gcpl4g24r
+      exclusive: false
+      is_default: false
+
+  - id: slurm_controller
+    source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
+    use:
+    - network
+    - gcp8c32rspot_partition
+    - gcpl4g24r_partition
+    settings:
+      enable_hybrid: true
+      slurm_cluster_name: $(vars.cluster_name)
+      enable_slurm_auth: true
+      # No slurm_key_mount: the key is in our images (bmd-packer).
+      create_bucket: false
+      bucket_name: $(vars.slurm_bucket_name)
+      output_dir: $(vars.output_dir)
+      install_dir: $(vars.onprem_cloud_dir)
+      hybrid_conf:
+        slurm_control_host: $(vars.onprem_ctld_host)
+        slurm_control_addr: $(vars.onprem_ctld_addr)
+        slurm_uid: $(vars.slurm_uid)
+        slurm_gid: $(vars.slurm_gid)
+        slurm_log_dir: $(vars.onprem_slurm_log_dir)
+        slurm_bin_dir: $(vars.onprem_slurm_bin_dir)
+        slurm_version: $(vars.slurm_version)
+        # Access token of slurm-controller (start and stop instances),
+        # refreshed there by Vault Agent. Needs our util.py patch: upstream
+        # reads only key files here. See bmd/README.md.
+        google_app_cred_path: /etc/slurm/cloud/gcp-sa.json
