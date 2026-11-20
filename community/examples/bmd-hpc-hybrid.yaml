@@ -101,21 +101,30 @@ deployment_groups:
       network_name: $(vars.network_name)
       subnetwork_name: $(vars.subnetwork_name)
 
-  # Partition names follow the cluster-wide scheme (bmd-ansible,
+  # ---- Partitions ----
+  # Each cloud partition is two modules:
+  #   nodeset:   a group of identical VMs (one instance template): machine
+  #              type, image, disk, account, how many at most
+  #   partition: the Slurm partition (queue) on top of it
+  # Names follow the cluster-wide scheme (bmd-ansible,
   # roles/slurmctld_install/README.md "Partition names"):
   #   CPU <where><cpus>c<ram GB>r[spot], GPU <where><model>g<gpu GB>r[spot]
   # Node names become <cluster_name>-<nodeset name>-<n>.
   #
   # Testing sizes. exclusive: false keeps a node for several jobs until it
-  # has been idle for suspend_time (300 s), instead of deleting it after
-  # every job.
+  # has been idle for 300 s, instead of deleting it after every job.
+  # is_default: false keeps the on-prem partition the default.
+  #
+  # Wiring is written out (no use: between these modules), so the expanded
+  # blueprint lists exactly these partitions and nothing generated.
 
+  # gcp8c32rspot: CPU, n2-standard-8 (8 vCPU, 32 GB), spot, at most 2 nodes
   - id: gcp8c32rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
       name: gcp8c32rspot
-      machine_type: n2-standard-8      # 8 vCPU, 32 GB
+      machine_type: n2-standard-8
       enable_spot_vm: true
       node_count_dynamic_max: 2
       enable_placement: false
@@ -130,19 +139,20 @@ deployment_groups:
 
   - id: gcp8c32rspot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
-    use: [gcp8c32rspot_nodeset]
     settings:
       partition_name: gcp8c32rspot
+      nodeset: [$(gcp8c32rspot_nodeset.nodeset)]
       exclusive: false
-      # The on-prem partition stays the default.
       is_default: false
 
+  # gcpl4g24r: GPU, g2-standard-8 (1x L4 24 GB, 8 vCPU, 32 GB), on-demand,
+  # at most 1 node
   - id: gcpl4g24r_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
       name: gcpl4g24r
-      machine_type: g2-standard-8      # 1x L4 24 GB, 8 vCPU, 32 GB
+      machine_type: g2-standard-8
       node_count_dynamic_max: 1
       enable_placement: false
       instance_image: $(vars.gpu_image)
@@ -156,19 +166,32 @@ deployment_groups:
 
   - id: gcpl4g24r_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
-    use: [gcpl4g24r_nodeset]
     settings:
       partition_name: gcpl4g24r
+      nodeset: [$(gcpl4g24r_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
+  # ---- The on-prem controller's side ----
+  # Creates no VM in hybrid mode: writes the config files for the bucket
+  # and the hybrid files (cloud.conf, resume.py, suspend.py) for our
+  # controller.
   - id: slurm_controller
     source: community/modules/scheduler/schedmd-slurm-gcp-v6-controller
-    use:
-    - network
-    - gcp8c32rspot_partition
-    - gcpl4g24r_partition
+    use: [network]
     settings:
+      # One line per partition above. Each partition module returns a
+      # one-item list, hence [0].
+      partitions:
+      - $(gcp8c32rspot_partition.partitions[0])
+      - $(gcpl4g24r_partition.partitions[0])
+      nodeset:
+      - $(gcp8c32rspot_partition.nodeset[0])
+      - $(gcpl4g24r_partition.nodeset[0])
+      # Not used: dynamic nodesets (VMs started outside slurm-gcp) and TPUs.
+      nodeset_dyn: []
+      nodeset_tpu: []
+
       enable_hybrid: true
       slurm_cluster_name: $(vars.cluster_name)
       enable_slurm_auth: true
@@ -185,7 +208,8 @@ deployment_groups:
         slurm_log_dir: $(vars.onprem_slurm_log_dir)
         slurm_bin_dir: $(vars.onprem_slurm_bin_dir)
         slurm_version: $(vars.slurm_version)
-        # Access token of hpc-slurm-controller-node (start and stop instances),
-        # refreshed there every 15 min (bmd-ansible slurm_gcp_token_install). Needs our util.py patch: upstream
-        # reads only key files here. See bmd/README.md.
+        # Access token of hpc-slurm-controller-node (start and delete
+        # nodes), refreshed every 15 min by bmd-ansible's
+        # slurm_gcp_token_install. Needs our util.py patch: upstream reads
+        # only key files here. See bmd/README.md.
         google_app_cred_path: /etc/slurm/cloud/gcp-sa.json
