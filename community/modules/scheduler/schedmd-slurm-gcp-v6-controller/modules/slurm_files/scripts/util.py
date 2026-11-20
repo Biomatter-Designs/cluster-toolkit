@@ -49,6 +49,7 @@ from google.cloud import secretmanager
 from google.cloud import storage # type: ignore
 
 import google.auth # type: ignore
+import google.oauth2.credentials # type: ignore
 from google.oauth2 import service_account # type: ignore
 import googleapiclient.discovery # type: ignore
 import google_auth_httplib2 # type: ignore
@@ -385,11 +386,27 @@ def endpoint_version(api: ApiEndpoint) -> Optional[str]:
     return lookup().endpoint_versions.get(api.value, None)
 
 
+# Biomatter: the on-prem controller of a hybrid cluster gets short-lived
+# access tokens from Vault instead of a service-account key. A file at
+# google_app_cred_path (GOOGLE_APPLICATION_CREDENTIALS) that is not JSON is
+# read as a bare access token. resume.py and suspend.py are new processes on
+# every call, so a token refreshed on disk is picked up without a restart.
+def _token_credentials(path: str) -> Optional[google.oauth2.credentials.Credentials]:
+    """Credentials from a bare access token file, or None for a JSON file."""
+    text = Path(path).read_text().strip()
+    if text.startswith("{"):
+        return None  # JSON: a key file, upstream behaviour
+    return google.oauth2.credentials.Credentials(token=text)
+
+
 @lru_cache(maxsize=1)
 def get_credentials() -> Optional[service_account.Credentials]:
     """Get credentials for service account"""
     key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     if key_path is not None:
+        token = _token_credentials(key_path)
+        if token is not None:
+            return token
         credentials = service_account.Credentials.from_service_account_file(
             key_path, scopes=[f"https://www.{universe_domain()}/auth/cloud-platform"]
         )
@@ -737,11 +754,21 @@ def storage_client() -> storage.Client:
     api_endpoint = f"https://storage.{ud}" if (ud and ud != DEFAULT_UNIVERSE_DOMAIN) else None
     universe_domain_val = ud if (ud and ud != DEFAULT_UNIVERSE_DOMAIN) else None
 
+    # Biomatter: with a token file (see _token_credentials) pass the
+    # credentials explicitly; Google's own lookup would parse the file as
+    # JSON. project=None: bucket and object calls need none, and inferring
+    # one would read the file too.
+    extra: Dict[str, Any] = {}
+    key_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if key_path is not None and _token_credentials(key_path) is not None:
+        extra = {"credentials": get_credentials(), "project": None}
+
     return storage.Client(
         client_options=ClientOptions(
             api_endpoint=api_endpoint,
             universe_domain=universe_domain_val,
-        )
+        ),
+        **extra,
     )
 
 
