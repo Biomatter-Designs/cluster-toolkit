@@ -147,10 +147,11 @@ has a key except Vault's own (`vault-gcp`).
 | `hpc-slurm-controller-node` | the on-prem controller (`resume.py`, `suspend.py`), token through Vault | Compute Instance Admin (v1) on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Viewer on `bmd-hpc-slurm-config` | none |
 | `hpc-packer` | Packer on the operator, token through Vault | builds images (bmd-packer `hpc/`) | none |
 | `vault-gcp` | Vault itself | Service Account Token Creator on `hpc-packer` and on `hpc-slurm-controller-node`, each granted on that account, not on the project | one, stored only inside Vault |
-| `hpc-deployer` (later) | gcluster on the operator, token through Vault | creates instance templates and firewall rules; reads and writes the state bucket | none |
+| `hpc-deployer` | gcluster on the operator, token through Vault | creates instance templates and firewall rules; reads and writes the state bucket | none |
 
-Until `hpc-deployer` exists, deploys run with an admin's own login on the
-operator (`gcloud auth application-default login`).
+Deploys run as `hpc-deployer` through bmd-ansible's `hpc_cloud_deploy`.
+gcluster takes no bare token, so for the run a local stand-in metadata
+server hands it the Vault token (details in that role's README).
 
 Why the grants look like this:
 
@@ -175,8 +176,10 @@ Why the grants look like this:
 **Deploy** (rare, when the blueprint or a value changes):
 
 ```
-operator: bmd-ansible writes the deployment file
-  └─► gcluster create + deploy (Terraform, state in bmd-hpc-tfstate)
+operator: bmd-ansible hpc_cloud_deploy writes the deployment file
+  └─► hpc-cloud-deploy plan|apply, as hpc-deployer (token from Vault)
+        gcluster create + checks; plan: terraform plan; apply: gcluster deploy
+        (state in bmd-hpc-tfstate)
         ├─► GCP: firewall rules, one instance template per nodeset
         ├─► bmd-hpc-slurm-config: config.yaml
         └─► operator: config.tgz (cloud.conf, resume.py, suspend.py, ...)
