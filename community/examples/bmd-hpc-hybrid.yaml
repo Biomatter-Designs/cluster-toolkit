@@ -208,6 +208,6 @@ deployment_groups:
         slurm_bin_dir: $(vars.onprem_slurm_bin_dir)
         slurm_version: $(vars.slurm_version)
         # Access token of hpc-slurm-controller-node (start and stop instances),
-        # refreshed there by Vault Agent. Needs our util.py patch: upstream
+        # refreshed there every 15 min (bmd-ansible slurm_gcp_token_install). Needs our util.py patch: upstream
         # reads only key files here. See bmd/README.md.
         google_app_cred_path: /etc/slurm/cloud/gcp-sa.json

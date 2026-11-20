@@ -201,10 +201,10 @@ sbatch -p gcp8c32rspot ...
 **The controller's token** (all the time):
 
 ```
-Vault Agent on the controller (own AppRole, only from 10.16.1.2)
+bmd-ansible slurm_gcp_token_install on the controller: timer every 15 min (own AppRole, only from 10.16.1.2)
   └─► Vault: gcp/impersonated-account/hpc-slurm-controller-node/token
         └─► Google IAM, as vault-gcp: "a 1-hour token for hpc-slurm-controller-node"
-              └─► /etc/slurm/cloud/gcp-sa.json (0600, slurm), rewritten every ~40 min
+              └─► /etc/slurm/cloud/gcp-sa.json (0600, slurm), rewritten every 15 min
 ```
 
 No service-account key exists for this project. `resume.py` and
@@ -231,13 +231,13 @@ python3 -m venv /tmp/sgv && /tmp/sgv/bin/pip install -r requirements-dev.txt
 /tmp/sgv/bin/python -m pytest -q tests/
 ```
 
-If Vault or the agent is down for longer than about 20 minutes, cloud nodes
+If Vault or the token refresh is down for longer than about 45 minutes, cloud nodes
 stop starting; running jobs and on-prem nodes are not affected.
 
 ## Open before the first deploy
 
-- The controller's token: the impersonated account and AppRole in Vault,
-  Vault Agent on the controller (bmd-ansible).
+- The controller's token: run bmd-ansible's Vault roles (`--tags vault_gcp`,
+  `--tags vault_config`) and `slurm_gcp_token_install` on the controller.
 - State bucket `bmd-hpc-tfstate`, if not created yet.
 - Firewall on the office side: cloud nodes need to reach the controller on
   6817 and the login node on 60001-63000; the controller and login node need
