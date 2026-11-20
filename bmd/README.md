@@ -105,7 +105,7 @@ and set the new tag in bmd-ansible.
   - **Changing the Slurm key means new images** (see bmd-ansible
     `roles/slurm_cloud_image_install/README.md`).
 - **Our service account on the nodes:** `compute_service_account_email`
-  (`slurm-compute@...`), with a custom role granted to it outside this
+  (`hpc-slurm-compute-node@...`), with a custom role granted to it outside this
   blueprint. Scope `cloud-platform`, so only IAM decides what it can do.
 - **Node metadata:** `block-project-ssh-keys=TRUE` and OS Login off. With
   project-wide SSH keys, Google's guest agent would create local users with
@@ -134,25 +134,77 @@ and set the new tag in bmd-ansible.
 
 ## Accounts and buckets
 
-Created by hand before the first deploy:
+Project `bmd-gcp-prod-main`. All set up by hand in the console; no account
+has a key except Vault's own (`vault-gcp`).
 
-| What | Name | Needs |
+| Account | Used by | Granted | Key |
+|---|---|---|---|
+| `hpc-slurm-compute-node` | the cloud nodes (attached to the VM) | custom role `tagger` on the project; Storage Object Viewer on `bmd-hpc-slurm-config` | none; GCE gives the VM its tokens |
+| `hpc-slurm-controller-node` | the on-prem controller (`resume.py`, `suspend.py`), token through Vault | Compute Instance Admin (v1) on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Viewer on `bmd-hpc-slurm-config` | none |
+| `hpc-packer` | Packer on the operator, token through Vault | builds images (bmd-packer `hpc/`) | none |
+| `vault-gcp` | Vault itself | Service Account Token Creator on `hpc-packer` and on `hpc-slurm-controller-node`, each granted on that account, not on the project | one, stored only inside Vault |
+| `hpc-deployer` (later) | gcluster on the operator, token through Vault | creates instance templates and firewall rules; reads and writes the state bucket | none |
+
+Until `hpc-deployer` exists, deploys run with an admin's own login on the
+operator (`gcloud auth application-default login`).
+
+Why the grants look like this:
+
+- **Service Account User on the node account, not on the project**: to
+  create a VM that runs as an account, the creator needs this right on that
+  account. Granted on `hpc-slurm-compute-node` only, the controller can
+  start nodes as that account and as no other (not as `hpc-packer`, not as
+  the default compute account).
+- **Token Creator on each account, not on the project**: Vault can mint
+  tokens for exactly the accounts listed, nothing else in the project.
+- **The controller cannot change firewall rules, templates or images**;
+  that is the deployer's job. A leaked controller token can start and
+  delete VMs from the existing templates, for at most an hour.
+
+| Bucket | For | Who reads/writes |
 |---|---|---|
-| Node account | `slurm-compute@bmd-gcp-prod-main` | custom role; read on the config bucket (`storage.objects.get`, `storage.objects.list`) |
-| Controller account (resume/suspend) | `slurm-controller@bmd-gcp-prod-main` | `roles/compute.instanceAdmin.v1` on the project; `roles/iam.serviceAccountUser` on the node account only; read on the config bucket. No key: see below |
-| Deployer account (gcluster on the operator) | `hpc-deployer`, token through Vault | creates instance templates and firewall rules; reads and writes the state bucket |
-| Config bucket | `bmd-hpc-slurm-config` | |
-| State bucket | `bmd-hpc-tfstate` | versioning on |
+| `bmd-hpc-slurm-config` | the cluster's config files (`config.yaml` and the like), written at deploy | nodes and controller read; the deployer writes |
+| `bmd-hpc-tfstate` | Terraform state of the deployment; versioning on | the deployer |
 
-## The controller's credentials
+## How it works
 
-No service-account key exists for this project. Vault impersonates
-`slurm-controller` (like `hpc-packer`) and hands out access tokens, valid
-for one hour at Google. Vault Agent on the controller fetches a fresh token
-about every 40 minutes and writes it to `/etc/slurm/cloud/gcp-sa.json`
-(0600, slurm); `resume.py` and `suspend.py` start as new processes and read
-it on every call.
+**Deploy** (rare, when the blueprint or a value changes):
 
+```
+operator: bmd-ansible writes the deployment file
+  └─► gcluster create + deploy (Terraform, state in bmd-hpc-tfstate)
+        ├─► GCP: firewall rules, one instance template per nodeset
+        ├─► bmd-hpc-slurm-config: config.yaml
+        └─► operator: config.tgz (cloud.conf, resume.py, suspend.py, ...)
+              └─► bmd-ansible unpacks it into /etc/slurm/cloud on the controller
+```
+
+**A job for a cloud partition** (every time):
+
+```
+sbatch -p gcp8c32rspot ...
+  └─► slurmctld: no node up → runs resume.py as slurm
+        reads the token in /etc/slurm/cloud/gcp-sa.json
+        └─► Compute API, as hpc-slurm-controller-node:
+            create bmd-hpc-gcp8c32rspot-0 from the template,
+            running as hpc-slurm-compute-node
+              └─► node boots our image (bmd-hpc-cpu), reads config.yaml
+                  from the bucket, starts slurmd, which registers with the
+                  controller (10.16.1.2:6817) over the VPN
+  └─► job runs; after 300 s idle slurmctld runs suspend.py → VM deleted
+```
+
+**The controller's token** (all the time):
+
+```
+Vault Agent on the controller (own AppRole, only from 10.16.1.2)
+  └─► Vault: gcp/impersonated-account/hpc-slurm-controller-node/token
+        └─► Google IAM, as vault-gcp: "a 1-hour token for hpc-slurm-controller-node"
+              └─► /etc/slurm/cloud/gcp-sa.json (0600, slurm), rewritten every ~40 min
+```
+
+No service-account key exists for this project. `resume.py` and
+`suspend.py` start as new processes and read the token on every call.
 Upstream's scripts only accept a key file there, so this needs a small
 patch in slurm-gcp's `util.py` (`get_credentials()`): JSON in the file is
 handled as before, anything else is read as a token. Planned, not yet in
@@ -163,8 +215,9 @@ stop starting; running jobs and on-prem nodes are not affected.
 
 ## Open before the first deploy
 
-- The controller and deployer accounts, and the controller's token
-  (below).
+- The controller's token: the `util.py` patch, the impersonated account
+  and AppRole in Vault, Vault Agent on the controller (bmd-ansible).
+- State bucket `bmd-hpc-tfstate`, if not created yet.
 - Firewall on the office side: cloud nodes need to reach the controller on
   6817 and the login node on 60001-63000; the controller and login node need
   to reach the cloud nodes on 6818.
