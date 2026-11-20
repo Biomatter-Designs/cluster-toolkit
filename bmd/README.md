@@ -11,6 +11,10 @@ is no other way, and then in a separate commit that says why.
   `hpc-slurm6-hybrid.yaml`, which it is copied from, because the repo's
   rules keep blueprint copies beside their template.
 - `bmd/README.md`: this file.
+- **Changed upstream file**, the only one: slurm-gcp's `util.py`, so the
+  on-prem controller can use a 1-hour token from Vault instead of a key
+  (see "How it works"). New test file next to it:
+  `tests/test_bmd_token_credentials.py`. Upgrades must keep this patch.
 
 Values (project, Slurm version, IDs, controller address) are not edited in
 the blueprint. They go into an untracked deployment file passed with `-d`,
@@ -205,18 +209,35 @@ Vault Agent on the controller (own AppRole, only from 10.16.1.2)
 
 No service-account key exists for this project. `resume.py` and
 `suspend.py` start as new processes and read the token on every call.
-Upstream's scripts only accept a key file there, so this needs a small
-patch in slurm-gcp's `util.py` (`get_credentials()`): JSON in the file is
-handled as before, anything else is read as a token. Planned, not yet in
-this branch; check it on every upgrade.
+Upstream's scripts only accept a key file there, so slurm-gcp's
+`util.py` (`community/modules/scheduler/schedmd-slurm-gcp-v6-controller/modules/slurm_files/scripts/`)
+carries our patch, marked `Biomatter:`:
+
+- `_token_credentials()`: a file that is not JSON is read as a bare token;
+  a JSON key file is handled as upstream.
+- `get_credentials()` (Compute calls: start and delete nodes) uses it.
+- `storage_client()` (reading the config bucket) gets the token passed
+  explicitly, with no project; Google's own lookup would parse the file as
+  JSON.
+
+Not changed, because we do not use them: the Secret Manager client (Cloud
+SQL passwords) and the BigQuery export. Tests:
+`scripts/tests/test_bmd_token_credentials.py`. On every upgrade, check that
+the patch still applies and run the tests:
+
+```sh
+cd community/modules/scheduler/schedmd-slurm-gcp-v6-controller/modules/slurm_files/scripts
+python3 -m venv /tmp/sgv && /tmp/sgv/bin/pip install -r requirements-dev.txt
+/tmp/sgv/bin/python -m pytest -q tests/
+```
 
 If Vault or the agent is down for longer than about 20 minutes, cloud nodes
 stop starting; running jobs and on-prem nodes are not affected.
 
 ## Open before the first deploy
 
-- The controller's token: the `util.py` patch, the impersonated account
-  and AppRole in Vault, Vault Agent on the controller (bmd-ansible).
+- The controller's token: the impersonated account and AppRole in Vault,
+  Vault Agent on the controller (bmd-ansible).
 - State bucket `bmd-hpc-tfstate`, if not created yet.
 - Firewall on the office side: cloud nodes need to reach the controller on
   6817 and the login node on 60001-63000; the controller and login node need
