@@ -147,7 +147,7 @@ has a key except Vault's own (`vault-gcp`).
 | `hpc-slurm-controller-node` | the on-prem controller (`resume.py`, `suspend.py`), token through Vault | Compute Instance Admin (v1) on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Viewer on `bmd-hpc-slurm-config` | none |
 | `hpc-packer` | Packer on the operator, token through Vault | builds images (bmd-packer `hpc/`) | none |
 | `vault-gcp` | Vault itself | Service Account Token Creator on `hpc-packer` and on `hpc-slurm-controller-node`, each granted on that account, not on the project | one, stored only inside Vault |
-| `hpc-deployer` | gcluster on the operator, token through Vault | creates instance templates and firewall rules; reads and writes the state bucket | none |
+| `hpc-deployer` | gcluster on the operator, token through Vault | Compute Instance Admin (v1), Compute Security Admin, Service Usage Viewer on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Admin and Storage Legacy Bucket Reader on `bmd-hpc-slurm-config` and `bmd-hpc-tfstate` | none |
 
 Deploys run as `hpc-deployer` through bmd-ansible's `hpc_cloud_deploy`.
 gcluster takes no bare token, so for the run a local stand-in metadata
