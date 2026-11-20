@@ -84,7 +84,13 @@ git tag bmd-YYYY.MM.N && git push origin bmd --tags
 git branch -d upgrade-v1.NNN
 ```
 
-and set the new tag in bmd-ansible.
+and set the new tag in bmd-ansible (`cluster_toolkit_version`), then on the
+operator `--tags cluster_toolkit` and the first `hpc_cloud_deploy` run (plan)
+with `-e hpc_cloud_deploy_upgrade=true`: gcluster refuses to rewrite a
+deployment folder made by another version of itself.
+
+Tags so far: `bmd-2026.11.1` (upstream v1.109.0; hybrid blueprint, util.py
+token patch).
 
 ## Differences from the upstream example
 
