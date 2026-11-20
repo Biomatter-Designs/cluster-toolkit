@@ -5,9 +5,9 @@ Our changes are new files only; upstream files are only changed when there
 is no other way, and then in a separate commit that says why.
 
 - `community/examples/bmd-hpc-hybrid.yaml`: the blueprint for the cloud side
-  of the on-prem Slurm cluster `bmd-hpc`. It creates the firewall rules in
-  the existing network, the cloud nodesets and partitions, and the files the
-  on-prem controller needs. It sits next to upstream's
+  of the on-prem Slurm cluster `bmd-hpc`. It creates the cloud nodesets and
+  partitions (instance templates) in the existing network, and the files
+  the on-prem controller needs. No firewall rules (see below). It sits next to upstream's
   `hpc-slurm6-hybrid.yaml`, which it is copied from, because the repo's
   rules keep blueprint copies beside their template.
 - `bmd/README.md`: this file.
@@ -35,7 +35,7 @@ names) and passes them to this blueprint.
 ## How it fits together
 
 ```
-bmd-ansible (values) ─► operator: gcluster create/deploy ─► GCP: firewall, templates
+bmd-ansible (values) ─► operator: gcluster create/deploy ─► GCP: instance templates
                                   install_hybrid.sh       ─► config.tgz
                         controller playbook               ─► /etc/slurm/cloud/ on the controller
 ```
@@ -90,10 +90,12 @@ and set the new tag in bmd-ansible.
 
 - **No network.** The nodes use the project's existing subnet
   (`network_name`, `subnetwork_name`; europe-west4, 10.2.0.0/16). The
-  project is for Slurm only. The blueprint adds two firewall rules, both
-  limited to the network tag `bmd-hpc-node` that every cloud node carries:
-  slurmd (6818) from the on-prem controller and login node, and everything
-  between cloud nodes.
+  project is for Slurm only. **No firewall rules** from the blueprint for
+  now: traffic to and between the nodes is allowed by the project's own
+  rules (managed outside it). Every cloud node carries the network tag
+  `bmd-hpc-node`, so rules can target the nodes later. Needed: slurmd
+  (6818) from the on-prem controller and login node, and everything between
+  cloud nodes.
 - **No image build.** The nodes boot our images, families `bmd-hpc-cpu` and
   `bmd-hpc-gpu`, built by bmd-packer (`hpc/`) and bmd-ansible (Slurm
   version, slurm ids 64030, the Slurm key, users, conda, Google's agents
@@ -147,7 +149,7 @@ has a key except Vault's own (`vault-gcp`).
 | `hpc-slurm-controller-node` | the on-prem controller (`resume.py`, `suspend.py`), token through Vault | Compute Instance Admin (v1) on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Viewer on `bmd-hpc-slurm-config` | none |
 | `hpc-packer` | Packer on the operator, token through Vault | builds images (bmd-packer `hpc/`) | none |
 | `vault-gcp` | Vault itself | Service Account Token Creator on `hpc-packer` and on `hpc-slurm-controller-node`, each granted on that account, not on the project | one, stored only inside Vault |
-| `hpc-deployer` | gcluster on the operator, token through Vault | Compute Instance Admin (v1), Compute Security Admin, Service Usage Viewer on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Admin and Storage Legacy Bucket Reader on `bmd-hpc-slurm-config` and `bmd-hpc-tfstate` | none |
+| `hpc-deployer` | gcluster on the operator, token through Vault | Compute Instance Admin (v1), Service Usage Viewer on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Admin and Storage Legacy Bucket Reader on `bmd-hpc-slurm-config` and `bmd-hpc-tfstate` | none |
 
 Deploys run as `hpc-deployer` through bmd-ansible's `hpc_cloud_deploy`.
 gcluster takes no bare token, so for the run a local stand-in metadata
@@ -162,7 +164,7 @@ Why the grants look like this:
   the default compute account).
 - **Token Creator on each account, not on the project**: Vault can mint
   tokens for exactly the accounts listed, nothing else in the project.
-- **The controller cannot change firewall rules, templates or images**;
+- **The controller cannot change templates, images or the network**;
   that is the deployer's job. A leaked controller token can start and
   delete VMs from the existing templates, for at most an hour.
 
@@ -180,7 +182,7 @@ operator: bmd-ansible hpc_cloud_deploy writes the deployment file
   └─► hpc-cloud-deploy plan|apply, as hpc-deployer (token from Vault)
         gcluster create + checks; plan: terraform plan; apply: gcluster deploy
         (state in bmd-hpc-tfstate)
-        ├─► GCP: firewall rules, one instance template per nodeset
+        ├─► GCP: one instance template per nodeset
         ├─► bmd-hpc-slurm-config: config.yaml
         └─► operator: config.tgz (cloud.conf, resume.py, suspend.py, ...)
               └─► bmd-ansible unpacks it into /etc/slurm/cloud on the controller

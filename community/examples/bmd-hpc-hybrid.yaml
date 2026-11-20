@@ -2,9 +2,9 @@
 #
 # Based on community/examples/hpc-slurm6-hybrid.yaml (Cluster Toolkit v1.109.0).
 # The controller and login nodes are on-prem (bmd-ansible). This blueprint
-# only creates the cloud side: firewall rules in the existing network, the
-# nodesets and partitions, and the files the on-prem controller needs
-# (cloud.conf, resume/suspend scripts).
+# only creates the cloud side: the nodesets and partitions (instance
+# templates), and the files the on-prem controller needs (cloud.conf,
+# resume/suspend scripts). No firewall rules: the project's own apply.
 #
 # Differences from upstream that shape this file:
 # - No network is created: the nodes use the existing subnet of the project.
@@ -56,9 +56,6 @@ vars:
   slurm_gid:
   onprem_ctld_host:
   onprem_ctld_addr:
-  # Hosts that open connections to slurmd on the cloud nodes: the controller
-  # and the login node (srun). Never 0.0.0.0/0.
-  onprem_slurm_ranges:
 
   # Controller paths of our deb install (not the /slurm/dev/... layout of the
   # upstream guide). resume.py and suspend.py run on the controller and call
@@ -84,7 +81,9 @@ vars:
   cpu_disk_size_gb: 64
   gpu_disk_size_gb: 128
 
-  # Network tag on every cloud node; the firewall rules target it.
+  # Network tag on every cloud node, for firewall rules. The blueprint
+  # creates none for now: traffic to and between the nodes is allowed by
+  # the project's own rules. A rule added later targets this tag.
   node_tag: bmd-hpc-node
 
   # Node metadata. Project-wide SSH keys would create local users with sudo
@@ -101,27 +100,6 @@ deployment_groups:
     settings:
       network_name: $(vars.network_name)
       subnetwork_name: $(vars.subnetwork_name)
-
-  - id: firewall
-    source: modules/network/firewall-rules
-    use: [network]
-    settings:
-      ingress_rules:
-      - name: bmd-hpc-slurmd-from-onprem
-        description: slurmd on cloud nodes, from the on-prem controller and login node
-        source_ranges: $(vars.onprem_slurm_ranges)
-        target_tags: [$(vars.node_tag)]
-        allow:
-        - protocol: tcp
-          ports: ["6818"]
-      - name: bmd-hpc-node-to-node
-        description: Everything between cloud nodes (slurmd, job steps, MPI)
-        source_tags: [$(vars.node_tag)]
-        target_tags: [$(vars.node_tag)]
-        allow:
-        - protocol: tcp
-        - protocol: udp
-        - protocol: icmp
 
   # Partition names follow the cluster-wide scheme (bmd-ansible,
   # roles/slurmctld_install/README.md "Partition names"):
