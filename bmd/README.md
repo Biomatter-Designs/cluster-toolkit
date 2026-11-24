@@ -250,6 +250,11 @@ carries our patch, marked `Biomatter:`:
 - `storage_client()` (reading the config bucket) gets the token passed
   explicitly, with no project; Google's own lookup would parse the file as
   JSON.
+- `Lookup.compute` sets `GOOGLE_APPLICATION_CREDENTIALS` from
+  `google_app_cred_path` only if it isn't set already. That path is the
+  controller's; `setup.py --hybrid` run by `install_hybrid.sh` on the
+  operator gets the deployer's token file in the variable instead
+  (bmd-ansible `hpc_cloud_deploy`). On the controller nothing changes.
 
 Not changed, because we do not use them: the Secret Manager client (Cloud
 SQL passwords) and the BigQuery export. Tests:

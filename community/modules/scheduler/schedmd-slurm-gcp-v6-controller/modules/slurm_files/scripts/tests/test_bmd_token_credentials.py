@@ -1,5 +1,5 @@
 # Biomatter: tests for the access-token file at google_app_cred_path
-# (util._token_credentials, get_credentials, storage_client).
+# (util._token_credentials, get_credentials, storage_client, Lookup.compute).
 
 import pytest
 from mock import Mock
@@ -63,3 +63,23 @@ def test_storage_client_unchanged_without_token(monkeypatch):
 
     assert "credentials" not in client.call_args.kwargs
     assert "project" not in client.call_args.kwargs
+
+
+def test_compute_keeps_caller_credentials(monkeypatch):
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/run/deployer-token")
+    monkeypatch.setattr(util, "compute_service", Mock(return_value="compute"))
+    lkp = util.Lookup(TstCfg(google_app_cred_path="/etc/slurm/cloud/gcp-sa.json"))
+
+    assert lkp.compute == "compute"
+    assert util.os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/run/deployer-token"
+
+
+def test_compute_sets_cred_path_when_unset(monkeypatch):
+    # setenv first, so monkeypatch removes what compute sets afterwards.
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "placeholder")
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS")
+    monkeypatch.setattr(util, "compute_service", Mock(return_value="compute"))
+    lkp = util.Lookup(TstCfg(google_app_cred_path="/etc/slurm/cloud/gcp-sa.json"))
+
+    assert lkp.compute == "compute"
+    assert util.os.environ["GOOGLE_APPLICATION_CREDENTIALS"] == "/etc/slurm/cloud/gcp-sa.json"

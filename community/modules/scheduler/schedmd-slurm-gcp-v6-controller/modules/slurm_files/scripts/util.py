@@ -1859,7 +1859,12 @@ class Lookup:
     @cached_property
     def compute(self):
         # TODO evaluate when we need to use google_app_cred_path
-        if self.cfg.google_app_cred_path:
+        # Biomatter: keep GOOGLE_APPLICATION_CREDENTIALS if the caller set it.
+        # google_app_cred_path is the on-prem controller's path; setup.py
+        # --hybrid on the deploy host (install_hybrid.sh) passes its own
+        # token file instead. On the controller the variable is unset, so
+        # this path is used as upstream.
+        if self.cfg.google_app_cred_path and "GOOGLE_APPLICATION_CREDENTIALS" not in os.environ:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = self.cfg.google_app_cred_path
         return compute_service()
 
