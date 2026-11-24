@@ -834,7 +834,7 @@ def setup_compute():
     update_system_config("slurmd", sysconf)
     install_custom_scripts()
 
-    setup_nss_slurm()
+    # Biomatter: no setup_nss_slurm(): our users are in the images' files.
     setup_network_storage()
 
     has_gpu = run("lspci | grep --ignore-case 'NVIDIA' | wc -l", shell=True).returncode
@@ -1099,7 +1099,7 @@ def main():
     get_config()
     lkp = lookup()
     populate_etc_hosts(lkp)
-    setup_cloud_ops()
+    # Biomatter: no setup_cloud_ops(): our images have no Ops Agent.
     configure_dirs()
     # call the setup function for the instance type
     role = lookup().instance_role

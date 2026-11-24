@@ -11,14 +11,16 @@ is no other way, and then in a separate commit that says why.
   `hpc-slurm6-hybrid.yaml`, which it is copied from, because the repo's
   rules keep blueprint copies beside their template.
 - `bmd/README.md`: this file.
-- **Changed upstream files**, two, marked `Biomatter:` (see "How it
-  works"); upgrades must keep both patches:
+- **Changed upstream files**, three, marked `Biomatter:` (see "How it
+  works"); upgrades must keep all patches:
   - slurm-gcp's `util.py`, so the on-prem controller can use a 1-hour token
     from Vault instead of a key. New test file next to it:
     `tests/test_bmd_token_credentials.py`.
   - slurm-gcp's `setup_network_storage.py`, so booting nodes don't wait for
     the controller to export the key that is already in the image. Tests at
     the end of `tests/test_setup_network_storage.py`.
+  - slurm-gcp's `setup.py`, so booting nodes don't add `slurm` to
+    `nsswitch.conf` or configure Google's Ops Agent.
 
 Values (project, Slurm version, IDs, controller address) are not edited in
 the blueprint. They go into an untracked deployment file passed with `-d`,
@@ -304,6 +306,17 @@ is left out of the wait for the controller's NFS exports (upstream #6315)
 and the handler then skips it as before. Without the key on the node,
 upstream behaviour is unchanged. Tests: the `Biomatter:` ones at the end of
 `tests/test_setup_network_storage.py`.
+
+`setup.py` (same folder) carries the third patch, marked `Biomatter:`: two
+calls removed from a booting node's setup:
+- `setup_nss_slurm()`: it added `slurm` to the `passwd` and `group` lines of
+  `/etc/nsswitch.conf` on every boot. That needs
+  `LaunchParameters=enable_nss_slurm`, which bmd-ansible leaves out (the
+  users are in the images); without it every lookup logged
+  `_handle_getgr: incomplete data`. Our images also take `slurm` out of
+  `nsswitch.conf` (bmd-ansible `slurm_cloud_image_install`).
+- `setup_cloud_ops()`: configures Google's Ops Agent, which our images
+  don't have.
 
 ## Open before the first deploy
 
