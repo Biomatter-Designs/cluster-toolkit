@@ -117,6 +117,10 @@ deployment_groups:
   #   CPU <where><cpus>c<ram GB>r[spot], GPU <where><model>g<gpu GB>r[spot]
   # Node names become <cluster_name>-<nodeset name>-<n>.
   #
+  # Hyperthreading is off (threads_per_core: 1), as on our on-prem nodes:
+  # Slurm gets the physical cores, half the machine type's vCPUs. Names
+  # count those cores.
+  #
   # Testing sizes. exclusive: false keeps a node for several jobs until it
   # has been idle for 300 s, instead of deleting it after every job.
   # is_default: false keeps the on-prem partition the default.
@@ -124,13 +128,16 @@ deployment_groups:
   # Wiring is written out (no use: between these modules), so the expanded
   # blueprint lists exactly these partitions and nothing generated.
 
-  # gcp8c32rspot: CPU, n2-standard-8 (8 vCPU, 32 GB), spot, at most 2 nodes
-  - id: gcp8c32rspot_nodeset
+  # gcp4c32rspot: CPU, n2-standard-8 (4 cores, hyperthreading off, 32 GB),
+  # spot, at most 2 nodes
+  - id: gcp4c32rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: gcp8c32rspot
+      name: gcp4c32rspot
       machine_type: n2-standard-8
+      advanced_machine_features:
+        threads_per_core: 1
       enable_spot_vm: true
       # Preempted VMs are deleted, not left stopped (with their disk). Must
       # be set: unset, GCP fills in STOP and every plan replaces the template.
@@ -147,15 +154,15 @@ deployment_groups:
       metadata: $(vars.node_metadata)
       tags: [$(vars.node_tag)]
 
-  - id: gcp8c32rspot_partition
+  - id: gcp4c32rspot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
     settings:
-      partition_name: gcp8c32rspot
-      nodeset: [$(gcp8c32rspot_nodeset.nodeset)]
+      partition_name: gcp4c32rspot
+      nodeset: [$(gcp4c32rspot_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
-  # gcpl4g24r: GPU, g2-standard-8 (1x L4 24 GB, 8 vCPU, 32 GB), on-demand,
+  # gcpl4g24r: GPU, g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB), on-demand,
   # at most 1 node
   - id: gcpl4g24r_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
@@ -163,6 +170,8 @@ deployment_groups:
     settings:
       name: gcpl4g24r
       machine_type: g2-standard-8
+      advanced_machine_features:
+        threads_per_core: 1
       node_count_dynamic_max: 1
       enable_placement: false
       instance_image: $(vars.gpu_image)
@@ -193,10 +202,10 @@ deployment_groups:
       # One line per partition above. Each partition module returns a
       # one-item list, hence [0].
       partitions:
-      - $(gcp8c32rspot_partition.partitions[0])
+      - $(gcp4c32rspot_partition.partitions[0])
       - $(gcpl4g24r_partition.partitions[0])
       nodeset:
-      - $(gcp8c32rspot_partition.nodeset[0])
+      - $(gcp4c32rspot_partition.nodeset[0])
       - $(gcpl4g24r_partition.nodeset[0])
       # Not used: dynamic nodesets (VMs started outside slurm-gcp) and TPUs.
       nodeset_dyn: []

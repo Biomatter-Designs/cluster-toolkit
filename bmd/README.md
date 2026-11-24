@@ -159,10 +159,14 @@ token patch).
 
 ## Partitions (testing)
 
+Hyperthreading off, as on-prem: Slurm sees the physical cores, half the
+machine type's vCPUs (`threads_per_core: 1`, the module's default, set
+explicitly). The partition names count those cores.
+
 | Partition | Machine | Spot | Max nodes |
 |---|---|---|---|
-| `gcp8c32rspot` | n2-standard-8 (8 vCPU, 32 GB) | yes | 2 |
-| `gcpl4g24r` | g2-standard-8 (1x L4 24 GB, 8 vCPU, 32 GB) | no | 1 |
+| `gcp4c32rspot` | n2-standard-8 (4 cores, 32 GB) | yes | 2 |
+| `gcpl4g24r` | g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB) | no | 1 |
 
 ## Accounts and buckets
 
@@ -217,11 +221,11 @@ operator: bmd-ansible hpc_cloud_deploy writes the deployment file
 **A job for a cloud partition** (every time):
 
 ```
-sbatch -p gcp8c32rspot ...
+sbatch -p gcp4c32rspot ...
   └─► slurmctld: no node up → runs resume.py as slurm
         reads the token in /etc/slurm/cloud/gcp-sa.json
         └─► Compute API, as hpc-slurm-controller-node:
-            create bmd-hpc-gcp8c32rspot-0 from the template,
+            create bmd-hpc-gcp4c32rspot-0 from the template,
             running as hpc-slurm-compute-node
               └─► node boots our image (bmd-hpc-cpu), reads config.yaml
                   from the bucket, starts slurmd, which registers with the
