@@ -11,10 +11,14 @@ is no other way, and then in a separate commit that says why.
   `hpc-slurm6-hybrid.yaml`, which it is copied from, because the repo's
   rules keep blueprint copies beside their template.
 - `bmd/README.md`: this file.
-- **Changed upstream file**, the only one: slurm-gcp's `util.py`, so the
-  on-prem controller can use a 1-hour token from Vault instead of a key
-  (see "How it works"). New test file next to it:
-  `tests/test_bmd_token_credentials.py`. Upgrades must keep this patch.
+- **Changed upstream files**, two, marked `Biomatter:` (see "How it
+  works"); upgrades must keep both patches:
+  - slurm-gcp's `util.py`, so the on-prem controller can use a 1-hour token
+    from Vault instead of a key. New test file next to it:
+    `tests/test_bmd_token_credentials.py`.
+  - slurm-gcp's `setup_network_storage.py`, so booting nodes don't wait for
+    the controller to export the key that is already in the image. Tests at
+    the end of `tests/test_setup_network_storage.py`.
 
 Values (project, Slurm version, IDs, controller address) are not edited in
 the blueprint. They go into an untracked deployment file passed with `-d`,
@@ -126,6 +130,14 @@ token patch).
     read the key. Keep GCP access to a few people.
   - **Changing the Slurm key means new images** (see bmd-ansible
     `roles/slurm_cloud_image_install/README.md`).
+  - Since upstream #6315 (Nov 2026) a booting node first waits up to 600 s
+    for the controller's NFS export of the key, before noticing the key is
+    already there. Longer than `ResumeTimeout` (300 s): every node would be
+    marked down. Our patch leaves the key out of that wait when it's on the
+    node (hybrid only, the same check the key handler makes).
+- **No NFS from the controller** (`enable_default_mounts: false`): upstream
+  mounts `/home` and `/opt/apps` from the controller on every node. Ours
+  exports nothing; users and tools are in the images.
 - **Our service account on the nodes:** `compute_service_account_email`
   (`hpc-slurm-compute-node@...`), with a custom role granted to it outside this
   blueprint. Scope `cloud-platform`, so only IAM decides what it can do.
@@ -274,6 +286,15 @@ python3 -m venv /tmp/sgv && /tmp/sgv/bin/pip install -r requirements-dev.txt
 
 If Vault or the token refresh is down for longer than about 45 minutes, cloud nodes
 stop starting; running jobs and on-prem nodes are not affected.
+
+`setup_network_storage.py` (same folder) carries the second patch, marked
+`Biomatter:`. `_hybrid_key_in_place()` makes the same check as
+`slurm_key_mount_handler()`: hybrid, and the key file already on the node
+(`/usr/local/etc/slurm/slurm.key`, from our images). If so, the key mount
+is left out of the wait for the controller's NFS exports (upstream #6315)
+and the handler then skips it as before. Without the key on the node,
+upstream behaviour is unchanged. Tests: the `Biomatter:` ones at the end of
+`tests/test_setup_network_storage.py`.
 
 ## Open before the first deploy
 

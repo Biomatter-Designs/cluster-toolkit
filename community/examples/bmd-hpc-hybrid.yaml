@@ -214,7 +214,11 @@ deployment_groups:
       enable_hybrid: true
       slurm_cluster_name: $(vars.cluster_name)
       enable_slurm_auth: true
-      # No slurm_key_mount: the key is in our images (bmd-packer).
+      # No slurm_key_mount: the key is in our images (bmd-packer). Our patch
+      # in setup_network_storage.py keeps nodes from waiting for its export.
+      # No NFS from the controller either (/home, /opt/apps): our on-prem
+      # controller exports nothing; users and tools are in the images.
+      enable_default_mounts: false
       create_bucket: false
       bucket_name: $(vars.slurm_bucket_name)
       output_dir: $(vars.output_dir)

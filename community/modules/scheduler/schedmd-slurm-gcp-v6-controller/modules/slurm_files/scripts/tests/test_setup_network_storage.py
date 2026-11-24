@@ -220,3 +220,42 @@ def test_setup_network_storage_external_nfs_server_avoids_host_lookup_retries():
         mock_hl.assert_not_called()
         mock_ghbn.assert_called_once_with("unresolvable-filestore.local")
         mock_wait.assert_called_once_with("slurm-controller", {"/home", "/etc/munge"}, timeout=600)
+
+
+# Biomatter: hybrid with the key baked into the image: no wait for the key export.
+def test_setup_network_storage_hybrid_key_in_place_skips_key_wait():
+    with _client_env([_mnt(path="/home")]) as (lkp, mock_wait, _, _, _):
+        lkp.cfg = NSDict(enable_slurm_auth=True, hybrid=True)
+        lkp.slurm_key_mount = _mnt(path="/slurm/key_distribution")
+        run_setup_network_storage()  # Path.is_file is patched to True: key in place
+        mock_wait.assert_called_once_with("10.0.0.1", {"/home"}, timeout=600)
+
+    # No other controller mount: nothing to wait for at all.
+    with _client_env([]) as (lkp, mock_wait, _, _, _):
+        lkp.cfg = NSDict(enable_slurm_auth=True, hybrid=True)
+        lkp.slurm_key_mount = _mnt(path="/slurm/key_distribution")
+        run_setup_network_storage()
+        mock_wait.assert_not_called()
+
+
+# Biomatter: hybrid without the key on the node: still waits for its export.
+def test_setup_network_storage_hybrid_key_missing_waits_for_key():
+    with _client_env([]) as (lkp, mock_wait, _, _, _), \
+         patch("setup_network_storage._hybrid_key_in_place", return_value=False):
+        lkp.cfg = NSDict(enable_slurm_auth=True, hybrid=True)
+        lkp.slurm_key_mount = _mnt(path="/slurm/key_distribution")
+        run_setup_network_storage()
+        mock_wait.assert_called_once_with("10.0.0.1", {"/slurm/key_distribution"}, timeout=600)
+
+
+def test_hybrid_key_in_place():
+    lkp = MagicMock()
+    for hybrid, slurm_auth, exists, expected in (
+        (False, True, True, False),
+        (True, True, True, True),
+        (True, True, False, False),
+        (True, False, True, True),
+    ):
+        lkp.cfg = NSDict(hybrid=hybrid, enable_slurm_auth=slurm_auth)
+        with patch("pathlib.Path.is_file", return_value=exists):
+            assert setup_network_storage._hybrid_key_in_place(lkp) is expected

@@ -235,6 +235,18 @@ def wait_for_controller_nfs(
     return False
 
 
+# Biomatter: same check as slurm_key_mount_handler / munge_mount_handler.
+def _hybrid_key_in_place(lkp: util.Lookup) -> bool:
+    """In hybrid, a key already on the node is used as it is."""
+    if not lkp.cfg.hybrid:
+        return False
+    if lkp.cfg.enable_slurm_auth:
+        key = Path(util.slurmdirs.etc / "slurm.key")
+    else:
+        key = Path(dirs.munge / "munge.key")
+    return key.is_file()
+
+
 def setup_network_storage():
     """prepare network fs mounts and add them to fstab"""
     log.info("Set up network storage")
@@ -248,6 +260,11 @@ def setup_network_storage():
     if not lookup().is_controller:
         lkp = lookup()
         key_mnt = lkp.slurm_key_mount if lkp.cfg.enable_slurm_auth else lkp.munge_mount
+        # Biomatter: a key already on the node (hybrid, baked into the image)
+        # is never mounted (see slurm_key_mount_handler), so don't wait for
+        # the controller to export it: an on-prem controller exports nothing.
+        if _hybrid_key_in_place(lkp):
+            key_mnt = None
         candidates = [*mounts, *([key_mnt] if key_mnt else [])]
         controller_mounts: dict[str, set[str]] = {}
         for m in candidates:
