@@ -120,7 +120,16 @@ token patch).
   `bmd-hpc-gpu`, built by bmd-packer (`hpc/`) and bmd-ansible (Slurm
   version, slurm ids 64030, the Slurm key, users, conda, Google's agents
   removed). Upstream's image groups and its `hybrid-scripts/` are not used.
-  Nodes created after a deploy take the newest image of their family.
+  **A node boots the newest image of its family when it is created, no
+  deploy needed:** the module writes the family's newest image name into
+  the instance template at deploy time, so each nodeset also sets
+  `instance_properties.disks` with the family URL
+  (`projects/<project>/global/images/family/bmd-hpc-cpu`). `resume.py`
+  sends these properties with every VM request and GCP resolves the family
+  then. They replace the template's disk list: size and type are repeated
+  there. Nodes already running keep their image until they power down. A bad
+  image is rolled back with `gcloud compute images deprecate <name>
+  --state=DEPRECATED`: the family falls back to the previous one.
 - Paths: our controller uses the Ubuntu deb layout (`/usr/bin`,
   `/etc/slurm`, `/var/log/slurm`), not `/slurm/dev/<version>/inst`.
 - **The Slurm key is in the images**, not fetched from an NFS export on the

@@ -76,13 +76,16 @@ vars:
   output_dir: /opt/cluster-toolkit-deployments/$(vars.deployment_name)/hybrid-files
 
   # ---- Images (bmd-packer hpc/) ----
-  # Families, so a newer image in the family is used by nodes created after
-  # the next deploy. Boot disks are the images' sizes.
+  # Families. A node boots the newest image of its family at the moment it
+  # is created, without a deploy: see the nodesets' instance_properties.
+  # Boot disks are the images' sizes.
+  cpu_image_family: bmd-hpc-cpu
+  gpu_image_family: bmd-hpc-gpu
   cpu_image:
-    family: bmd-hpc-cpu
+    family: $(vars.cpu_image_family)
     project: $(vars.project_id)
   gpu_image:
-    family: bmd-hpc-gpu
+    family: $(vars.gpu_image_family)
     project: $(vars.project_id)
   cpu_disk_size_gb: 64
   gpu_disk_size_gb: 128
@@ -149,6 +152,20 @@ deployment_groups:
       instance_image_custom: true
       disk_size_gb: $(vars.cpu_disk_size_gb)
       disk_type: pd-balanced
+      # The newest image of the family at every node start (no deploy after
+      # an image build). The module writes the family's newest image NAME
+      # into the instance template at deploy time; resume.py sends these
+      # properties with each VM request, and GCP resolves a family URL when
+      # it creates the VM. Replaces the template's disk list: keep size and
+      # type equal to the two settings above. See bmd/README.md.
+      instance_properties:
+        disks:
+        - boot: true
+          autoDelete: true
+          initializeParams:
+            sourceImage: projects/$(vars.project_id)/global/images/family/$(vars.cpu_image_family)
+            diskSizeGb: $(vars.cpu_disk_size_gb)
+            diskType: pd-balanced
       service_account_email: $(vars.compute_service_account_email)
       enable_oslogin: false
       metadata: $(vars.node_metadata)
@@ -178,6 +195,15 @@ deployment_groups:
       instance_image_custom: true
       disk_size_gb: $(vars.gpu_disk_size_gb)
       disk_type: pd-balanced
+      # Newest image of the family at every node start, as for gcp4c32rspot.
+      instance_properties:
+        disks:
+        - boot: true
+          autoDelete: true
+          initializeParams:
+            sourceImage: projects/$(vars.project_id)/global/images/family/$(vars.gpu_image_family)
+            diskSizeGb: $(vars.gpu_disk_size_gb)
+            diskType: pd-balanced
       service_account_email: $(vars.compute_service_account_email)
       enable_oslogin: false
       metadata: $(vars.node_metadata)
