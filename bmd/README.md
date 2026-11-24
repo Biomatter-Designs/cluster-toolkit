@@ -53,9 +53,20 @@ idle.
 | `bmd` | Upstream plus our files. This is what we run. |
 | `upgrade-...` | Short-lived, for testing one upstream upgrade. |
 
-The operator runs a **tag** of `bmd` (e.g. `bmd-2026.11.1`), set as
-`cluster_toolkit_version` in bmd-ansible `inventory/group_vars/hpc/versions.yml`.
-Going back means setting the previous tag.
+**The operator follows the branch `bmd`** (`cluster_toolkit_version: bmd` in
+bmd-ansible `inventory/group_vars/hpc/versions.yml`). Every deploy
+(`hpc_cloud_deploy`) first pulls `bmd` and rebuilds `gcluster` if it
+changed. So a change here goes live as:
+
+```
+edit on bmd → push → deploy plan on the operator → read it → deploy apply
+```
+
+Whatever is on `bmd` is what the next deploy uses: test anything
+unfinished on another branch. gcluster runs with `--force`, so a new commit
+(a new `gcluster` version) needs no extra step. Going back: revert the
+commit on `bmd`, or set `cluster_toolkit_version` to an older tag or commit
+for a while.
 
 ## Upgrading to a new upstream release
 
@@ -84,10 +95,8 @@ git tag bmd-YYYY.MM.N && git push origin bmd --tags
 git branch -d upgrade-v1.NNN
 ```
 
-and set the new tag in bmd-ansible (`cluster_toolkit_version`), then on the
-operator `--tags cluster_toolkit` and the first `hpc_cloud_deploy` run (plan)
-with `-e hpc_cloud_deploy_upgrade=true`: gcluster refuses to rewrite a
-deployment folder made by another version of itself.
+The next deploy on the operator picks it up. The tag only marks a known-good
+point to go back to.
 
 Tags so far: `bmd-2026.11.1` (upstream v1.109.0; hybrid blueprint, util.py
 token patch).
@@ -124,8 +133,14 @@ token patch).
   sudo on the nodes; access goes through the `ansible` account and our
   users from the images instead.
 - **Config bucket created beforehand** (`slurm_bucket_name`,
-  `create_bucket: false`), so its IAM is set explicitly and the deployer
-  needs no rights to change bucket policies.
+  `create_bucket: false`). The controller module still grants read on it
+  (Storage Object Viewer and Legacy Bucket Reader) to the controller's and
+  the nodes' accounts; there is no setting to turn that off. So the
+  deployer has Storage Admin on this bucket only.
+- **The controller's account is set** (`controller_service_account_email`,
+  `hpc-slurm-controller-node@...`), though no controller VM exists in
+  hybrid mode: unset, the module grants the bucket read to the project's
+  default compute account instead.
 - **Terraform state in a GCS bucket**, set by the deployment file
   (`terraform_backend_defaults`), not in the deployment folder.
 - slurm user and group ID 64030 (ours), not 620.
@@ -155,7 +170,7 @@ has a key except Vault's own (`vault-gcp`).
 | `hpc-slurm-controller-node` | the on-prem controller (`resume.py`, `suspend.py`), token through Vault | Compute Instance Admin (v1) on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Viewer on `bmd-hpc-slurm-config` | none |
 | `hpc-packer` | Packer on the operator, token through Vault | builds images (bmd-packer `hpc/`) | none |
 | `vault-gcp` | Vault itself | Service Account Token Creator on `hpc-packer` and on `hpc-slurm-controller-node`, each granted on that account, not on the project | one, stored only inside Vault |
-| `hpc-deployer` | gcluster on the operator, token through Vault | Compute Instance Admin (v1), Service Usage Viewer on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Admin and Storage Legacy Bucket Reader on `bmd-hpc-slurm-config` and `bmd-hpc-tfstate` | none |
+| `hpc-deployer` | gcluster on the operator, token through Vault | Compute Instance Admin (v1), Service Usage Viewer on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Admin on `bmd-hpc-slurm-config` (writes the files and grants the read access below); Storage Object Admin and Storage Legacy Bucket Reader on `bmd-hpc-tfstate` | none |
 
 Deploys run as `hpc-deployer` through bmd-ansible's `hpc_cloud_deploy`.
 gcluster takes no bare token, so for the run a local stand-in metadata
@@ -176,7 +191,7 @@ Why the grants look like this:
 
 | Bucket | For | Who reads/writes |
 |---|---|---|
-| `bmd-hpc-slurm-config` | the cluster's config files (`config.yaml` and the like), written at deploy | nodes and controller read; the deployer writes |
+| `bmd-hpc-slurm-config` | the cluster's config files (`config.yaml` and the like), written at deploy | nodes and controller read (granted by hand, and again by the deploy); the deployer writes and grants |
 | `bmd-hpc-tfstate` | Terraform state of the deployment; versioning on | the deployer |
 
 ## How it works

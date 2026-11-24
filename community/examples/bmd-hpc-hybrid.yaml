@@ -43,10 +43,16 @@ vars:
   # granted to it; the blueprint grants nothing.
   compute_service_account_email:
 
+  # Service account of the on-prem controller (resume.py/suspend.py, token
+  # from Vault). No controller VM exists in hybrid mode, but the controller
+  # module grants this account (and the nodes') read on the config bucket.
+  # Unset, it falls back to the project's default compute account.
+  controller_service_account_email:
+
   # Existing bucket for the cluster's config files (config.yaml and the
-  # like), created beforehand. The nodes read it at boot, the controller's
-  # resume/suspend scripts too. Created by hand so its IAM is explicit and
-  # the deployer needs no rights to change bucket policies.
+  # like), created by hand. The nodes read it at boot, the controller's
+  # resume/suspend scripts too. The controller module grants both accounts
+  # read on it, so the deployer has Storage Admin on this bucket.
   slurm_bucket_name:
 
   # ---- On-prem cluster (bmd-ansible group_vars/hpc) ----
@@ -194,6 +200,7 @@ deployment_groups:
 
       enable_hybrid: true
       slurm_cluster_name: $(vars.cluster_name)
+      service_account_email: $(vars.controller_service_account_email)
       enable_slurm_auth: true
       # No slurm_key_mount: the key is in our images (bmd-packer).
       create_bucket: false
