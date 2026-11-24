@@ -137,10 +137,15 @@ token patch).
   (Storage Object Viewer and Legacy Bucket Reader) to the controller's and
   the nodes' accounts; there is no setting to turn that off. So the
   deployer has Storage Admin on this bucket only.
-- **The controller's account is set** (`controller_service_account_email`,
-  `hpc-slurm-controller-node@...`), though no controller VM exists in
-  hybrid mode: unset, the module grants the bucket read to the project's
-  default compute account instead.
+- **The controller's account is set** in `hybrid_conf.service_account_email`
+  (`controller_service_account_email`, `hpc-slurm-controller-node@...`).
+  In hybrid mode the module grants that account the bucket read; unset, it
+  grants it to the project's default compute account. (The controller's
+  top-level `service_account_email` is not used for this in hybrid mode.)
+- **Preempted spot VMs are deleted** (`spot_instance_config`,
+  `termination_action: DELETE`), not left stopped with their disk. Slurm
+  sees the node gone and requeues its jobs. It must be set: unset, GCP
+  fills in STOP and every plan would replace the template.
 - **Terraform state in a GCS bucket**, set by the deployment file
   (`terraform_backend_defaults`), not in the deployment folder.
 - slurm user and group ID 64030 (ours), not 620.

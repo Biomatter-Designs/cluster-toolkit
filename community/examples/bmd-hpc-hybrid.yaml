@@ -132,6 +132,10 @@ deployment_groups:
       name: gcp8c32rspot
       machine_type: n2-standard-8
       enable_spot_vm: true
+      # Preempted VMs are deleted, not left stopped (with their disk). Must
+      # be set: unset, GCP fills in STOP and every plan replaces the template.
+      spot_instance_config:
+        termination_action: DELETE
       node_count_dynamic_max: 2
       enable_placement: false
       instance_image: $(vars.cpu_image)
@@ -200,7 +204,6 @@ deployment_groups:
 
       enable_hybrid: true
       slurm_cluster_name: $(vars.cluster_name)
-      service_account_email: $(vars.controller_service_account_email)
       enable_slurm_auth: true
       # No slurm_key_mount: the key is in our images (bmd-packer).
       create_bucket: false
@@ -215,6 +218,10 @@ deployment_groups:
         slurm_log_dir: $(vars.onprem_slurm_log_dir)
         slurm_bin_dir: $(vars.onprem_slurm_bin_dir)
         slurm_version: $(vars.slurm_version)
+        # The controller's account (hpc-slurm-controller-node). In hybrid
+        # mode the module grants it read on the config bucket from here;
+        # unset, it grants that to the project's default compute account.
+        service_account_email: $(vars.controller_service_account_email)
         # Access token of hpc-slurm-controller-node (start and delete
         # nodes), refreshed every 15 min by bmd-ansible's
         # slurm_gcp_token_install. Needs our util.py patch: upstream reads
