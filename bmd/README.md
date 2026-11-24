@@ -37,7 +37,8 @@ names) and passes them to this blueprint.
 ```
 bmd-ansible (values) ─► operator: gcluster create/deploy ─► GCP: instance templates
                                   install_hybrid.sh       ─► config.tgz
-                        controller playbook               ─► /etc/slurm/cloud/ on the controller
+                                  hpc_cloud_deploy        ─► scripts, venv, cloud-nodes.conf, topology.yaml
+                        controller: slurm_cloud_install   ─► /etc/slurm/cloud/, /etc/slurm/
 ```
 
 The operator runs Cluster Toolkit; the controller only receives the generated
@@ -282,5 +283,6 @@ stop starting; running jobs and on-prem nodes are not affected.
 - Firewall on the office side: cloud nodes need to reach the controller on
   6817 and the login node on 60001-63000; the controller and login node need
   to reach the cloud nodes on 6818.
-- DNS: the on-prem controller must resolve the cloud nodes' names (cloud
-  DNS forwarding over the VPN). The nodes reach the controller by address.
+- DNS: not needed. The controller gets `SlurmctldParameters=cloud_reg_addrs`
+  (bmd-ansible `hpc_cloud_deploy` writes it into `cloud-nodes.conf`), so a
+  cloud node's address comes from its registration. The nodes reach the controller by address.
