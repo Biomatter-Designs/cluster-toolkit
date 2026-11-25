@@ -14,7 +14,7 @@ The operator follows `bmd` (`cluster_toolkit_version: bmd` in bmd-ansible's
 `inventory/group_vars/hpc/versions.yml`). Every deploy pulls it first.
 
 ```
-edit on bmd → push → deploy plan on the operator → read it → apply → --tags slurm_cloud
+edit on bmd → push → deploy (plan, read it, apply, controller: deploying.md)
 ```
 
 Whatever is on `bmd` is used by the next deploy, so test unfinished work on

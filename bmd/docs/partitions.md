@@ -40,8 +40,7 @@ Node names: `bmd-hpc-<partition>-<n>`, e.g. `bmd-hpc-gcpl4g24r-0`.
    lists at the end of the blueprint.
 3. Validate offline (`gcluster expand`, see the repo's `CLAUDE.md`), push to
    `bmd`.
-4. On the operator: deploy plan, apply, then `--tags slurm_cloud` on the
-   controller (bmd-ansible).
+4. Deploy: plan, apply, then the controller ([deploying.md](deploying.md)).
 5. Check quota in GCP for new machine types and GPUs (on-demand and spot
    are separate quotas).
 

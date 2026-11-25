@@ -1,56 +1,10 @@
-# How it works
+# What runs on its own
 
-Three things happen: **you deploy a change** (by hand, with playbooks),
-**a job starts a cloud node** (automatic), and **the controller refreshes
-its Google token** (automatic). Only the first needs people.
+Once deployed, two things happen without anyone: the controller starts and
+deletes cloud nodes as jobs need them, and it keeps a fresh Google token
+for that. To change something, see [deploying.md](deploying.md).
 
-All playbook commands run **on the operator (`hq-virt-operator`), as the
-`ansible` user**, from `/opt/config-management/bmd-ansible` (`git pull`
-first). `-K` asks for `ansible`'s sudo password.
-
-## 1. Deploying a change (by hand)
-
-```
- you                        operator                         GCP / controller
- ───                        ────────                         ────────────────
- edit the blueprint   ──►   PLAYBOOK 1: plan           ──►   nothing changes; read the plan
- (push to branch bmd)       PLAYBOOK 1: apply          ──►   GCP: instance templates, config bucket
-                                                             operator: files for the controller
-                            PLAYBOOK 2: slurm_cloud    ──►   controller: new cloud config,
-                                                             scontrol reconfigure
-```
-
-**Playbook 1, the cloud deploy** (role `hpc_cloud_deploy`, runs as
-`hpc-deployer` with a token from Vault):
-
-```sh
-# plan: shows what would change, changes nothing
-ansible-playbook playbooks/infra/hosts/hq-virt-operator.biomatter.com_playbook.yml -K --tags hpc_cloud_deploy
-# apply: makes the change
-ansible-playbook playbooks/infra/hosts/hq-virt-operator.biomatter.com_playbook.yml -K --tags hpc_cloud_deploy -e hpc_cloud_deploy_apply=true
-```
-
-**Playbook 2, the controller** (role `slurm_cloud_install`):
-
-```sh
-ansible-playbook playbooks/infra/hosts/hq-virt-slurm-ctrl.biomatter.com_playbook.yml -K --tags slurm_cloud
-```
-
-Always both, in this order. Running jobs are not affected.
-
-### What to run for which change
-
-| Change | Edit | Run |
-|---|---|---|
-| Add or change a partition (machine, spot, max nodes, disk) | blueprint in this repo, push to `bmd` | playbook 1 (plan, apply), playbook 2 |
-| A value both sides share (Slurm version, project, network, accounts) | bmd-ansible `inventory/group_vars/hpc/` | playbook 1, playbook 2 |
-| Software in the node images | bmd-ansible image playbooks, then `hpc/build.sh cpu\|gpu update` in bmd-packer | nothing: the next node that starts uses the new image |
-| Upstream Toolkit upgrade | see [upgrading.md](upgrading.md) | playbook 1, playbook 2, new images |
-
-Read the plan before applying. A plan that wants to delete or replace more
-than you changed means something else changed too: stop and ask.
-
-## 2. A job starts a cloud node (automatic)
+## A job starts a cloud node
 
 ```
  user (login node)          controller                       GCP
@@ -66,7 +20,7 @@ Logs: `/var/log/slurm/resume.log` and `suspend.log` on the controller. A
 node that couldn't start goes `down~` (see [partitions.md](partitions.md),
 "When a node won't start").
 
-## 3. The controller's token (automatic)
+## The controller refreshes its Google token
 
 ```
  controller                         Vault                     Google
