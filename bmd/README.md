@@ -202,8 +202,12 @@ has a key except Vault's own (`vault-gcp`).
 | `hpc-slurm-compute-node` | the cloud nodes (attached to the VM) | custom role `tagger` on the project; Storage Object Viewer on `bmd-hpc-slurm-config` | none; GCE gives the VM its tokens |
 | `hpc-slurm-controller-node` | the on-prem controller (`resume.py`, `suspend.py`), token through Vault | Compute Instance Admin (v1) on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Object Viewer on `bmd-hpc-slurm-config` | none |
 | `hpc-packer` | Packer on the operator, token through Vault | builds images (bmd-packer `hpc/`) | none |
-| `vault-gcp` | Vault itself | Service Account Token Creator on `hpc-packer` and on `hpc-slurm-controller-node`, each granted on that account, not on the project | one, stored only inside Vault |
+| `vault-gcp` | Vault itself | Service Account Token Creator on `hpc-packer`, `hpc-deployer` and `hpc-slurm-controller-node`, each granted on that account, not on the project | one, stored only inside Vault |
 | `hpc-deployer` | gcluster on the operator, token through Vault | Compute Instance Admin (v1), Service Usage Viewer on the project; Service Account User on `hpc-slurm-compute-node` only; Storage Admin on `bmd-hpc-slurm-config` (writes the files and grants the read access below); Storage Object Admin and Storage Legacy Bucket Reader on `bmd-hpc-tfstate` | none |
+
+The controller's and the nodes' rights were checked where they run; known
+extras and how to check: bmd-ansible `docs/infrastructure.md`, "Checked
+rights".
 
 Deploys run as `hpc-deployer` through bmd-ansible's `hpc_cloud_deploy`.
 gcluster takes no bare token, so for the run a local stand-in metadata
