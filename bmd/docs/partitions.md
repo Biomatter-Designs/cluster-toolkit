@@ -56,14 +56,17 @@ Measured: the disk delivers what is provisioned, and helps parallel I/O
 (many processes, conda installs), not single small reads.
 Details: [disk-benchmark.md](disk-benchmark.md).
 
-## When a node won't start
+## When a node won't start or disappears
 
-On the controller, `/var/log/slurm/resume.log`:
+On the controller, `/var/log/slurm/resume.log` says why. What happens next
+depends on the case:
 
-| Message | Meaning |
-|---|---|
-| `ZONE_RESOURCE_POOL_EXHAUSTED` / `STOCKOUT` | GCP has no capacity right now; try again later or another partition |
-| `QUOTA_EXCEEDED` | raise the quota in the GCP console |
+| Case | What happens | Action |
+|---|---|---|
+| **No capacity** (`ZONE_RESOURCE_POOL_EXHAUSTED`, stockout) or **quota exceeded** | `resume.py` powers the node down again (`%` in `sinfo`), after 300 s it is `idle~` and usable. Batch jobs go back to the queue and retry by themselves | none for `sbatch`; `srun`/`salloc` fail at once, start them again. Quota: raise it in the GCP console |
+| **Any other start error** (template, permissions, token) | node marked `down~` | fix the cause, then `scontrol update nodename=<node> state=power_down_force` |
+| **A running VM disappears** (spot preemption, VM deleted) | slurmctld marks the node down and requeues its jobs; the node stays down | `scontrol update nodename=<node> state=power_down_force` |
 
-A failed node goes `down~` and stays there until reset:
-`scontrol update nodename=<node> state=power_down_force`.
+The last two are not reset automatically yet (bmd-ansible
+`docs/infrastructure.md`, "Not built yet"). For GPUs that are hard to get:
+submit with `sbatch` and wait.
