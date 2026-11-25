@@ -239,7 +239,7 @@ deployment_groups:
       is_default: false
 
   # gcpl4g24r: GPU, g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB), on-demand,
-  # at most 1 node
+  # at most 10 nodes
   - id: gcpl4g24r_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
@@ -253,7 +253,7 @@ deployment_groups:
       zones: $(vars.gpu_extra_zones)
       advanced_machine_features:
         threads_per_core: 1
-      node_count_dynamic_max: 1
+      node_count_dynamic_max: 10
       enable_placement: false
       instance_image: $(vars.gpu_image)
       instance_image_custom: true
@@ -281,6 +281,48 @@ deployment_groups:
       exclusive: false
       is_default: false
 
+  # gcpl4g24rspot: as gcpl4g24r, but spot (deleted when GCP takes it back),
+  # at most 10 nodes. Same zones.
+  - id: gcpl4g24rspot_nodeset
+    source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+    use: [network]
+    settings:
+      name: gcpl4g24rspot
+      machine_type: g2-standard-8
+      zones: $(vars.gpu_extra_zones)
+      advanced_machine_features:
+        threads_per_core: 1
+      enable_spot_vm: true
+      spot_instance_config:
+        termination_action: DELETE
+      node_count_dynamic_max: 10
+      enable_placement: false
+      instance_image: $(vars.gpu_image)
+      instance_image_custom: true
+      disk_size_gb: $(vars.gpu_disk_size_gb)
+      disk_type: pd-balanced
+      # Newest image of the family at every node start, as for gcp4c32rspot.
+      instance_properties:
+        disks:
+        - boot: true
+          autoDelete: true
+          initializeParams:
+            sourceImage: projects/$(vars.project_id)/global/images/family/$(vars.gpu_image_family)
+            diskSizeGb: $(vars.gpu_disk_size_gb)
+            diskType: pd-balanced
+      service_account_email: $(vars.compute_service_account_email)
+      enable_oslogin: false
+      metadata: $(vars.node_metadata)
+      tags: [$(vars.node_tag)]
+
+  - id: gcpl4g24rspot_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    settings:
+      partition_name: gcpl4g24rspot
+      nodeset: [$(gcpl4g24rspot_nodeset.nodeset)]
+      exclusive: false
+      is_default: false
+
   # ---- The on-prem controller's side ----
   # Creates no VM in hybrid mode: writes the config files for the bucket
   # and the hybrid files (cloud.conf, resume.py, suspend.py) for our
@@ -295,10 +337,12 @@ deployment_groups:
       - $(gcp4c32rspot_partition.partitions[0])
       - $(gcp8c64rspot_partition.partitions[0])
       - $(gcpl4g24r_partition.partitions[0])
+      - $(gcpl4g24rspot_partition.partitions[0])
       nodeset:
       - $(gcp4c32rspot_partition.nodeset[0])
       - $(gcp8c64rspot_partition.nodeset[0])
       - $(gcpl4g24r_partition.nodeset[0])
+      - $(gcpl4g24rspot_partition.nodeset[0])
       # Not used: dynamic nodesets (VMs started outside slurm-gcp) and TPUs.
       nodeset_dyn: []
       nodeset_tpu: []
