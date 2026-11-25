@@ -167,7 +167,7 @@ deployment_groups:
       # into the instance template at deploy time; resume.py sends these
       # properties with each VM request, and GCP resolves a family URL when
       # it creates the VM. Replaces the template's disk list: keep size and
-      # type equal to the two settings above. See bmd/README.md.
+      # type equal to the two settings above. See bmd/docs/partitions.md.
       instance_properties:
         disks:
         - boot: true
@@ -374,5 +374,5 @@ deployment_groups:
         # Access token of hpc-slurm-controller-node (start and delete
         # nodes), refreshed every 15 min by bmd-ansible's
         # slurm_gcp_token_install. Needs our util.py patch: upstream reads
-        # only key files here. See bmd/README.md.
+        # only key files here. See bmd/docs/upstream-changes.md.
         google_app_cred_path: /etc/slurm/cloud/gcp-sa.json

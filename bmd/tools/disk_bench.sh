@@ -3,7 +3,7 @@
 # Usage: ./disk_bench.sh /mnt/pd /mnt/hyperdisk
 # Each argument is a directory on a mounted filesystem backed by the disk to test.
 # Optional env: SIZE=4G RUNTIME=30
-# Results so far: bmd/README.md, "Boot disk speed".
+# Results so far: bmd/docs/disk-benchmark.md.
 
 set -euo pipefail
 command -v fio >/dev/null || { sudo apt-get update -qq; sudo apt-get install -y -qq fio; }
