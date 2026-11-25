@@ -87,6 +87,8 @@ vars:
   gpu_image:
     family: $(vars.gpu_image_family)
     project: $(vars.project_id)
+  # Zones besides vars.zone where GPU nodes may start (same region).
+  gpu_extra_zones: [europe-west4-a, europe-west4-c]
   cpu_disk_size_gb: 64
   gpu_disk_size_gb: 128
   # Hyperdisk Balanced boot disks (gcp8c64rspot). IOPS at the most a disk
@@ -244,6 +246,11 @@ deployment_groups:
     settings:
       name: gcpl4g24r
       machine_type: g2-standard-8
+      # L4s run out in one zone (ZONE_RESOURCE_POOL_EXHAUSTED): allow the
+      # region's other zones too. resume.py then asks for the region and GCP
+      # picks a zone with capacity. The subnet is regional, so the network
+      # and the VPN are the same in every zone.
+      zones: $(vars.gpu_extra_zones)
       advanced_machine_features:
         threads_per_core: 1
       node_count_dynamic_max: 1

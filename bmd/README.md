@@ -196,6 +196,10 @@ vCPUs. The partition names always count physical cores.
 | `gcp8c64rspot` | n4-standard-16 (8 cores, 64 GB) | on (16 CPUs) | hyperdisk-balanced (N4 takes only Hyperdisk), 32000 IOPS (the most a 64 GiB disk allows), 1000 MiB/s | yes | 2 |
 | `gcpl4g24r` | g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB) | off (4 CPUs) | pd-balanced | no | 1 |
 
+`gcpl4g24r` may start in europe-west4-a, -b or -c (`gpu_extra_zones`): L4s
+often run out in one zone (`ZONE_RESOURCE_POOL_EXHAUSTED` in `resume.log`),
+and GCP then picks a zone that has them. The others stay in `zone` (b).
+
 ### Boot disk speed (measured 2026-11-25)
 
 64 GiB boot disks, measured on the nodes with fio:
