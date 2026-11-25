@@ -191,7 +191,7 @@ vCPUs. The partition names always count physical cores.
 | Partition | Machine | Hyperthreading | Boot disk | Spot | Max nodes |
 |---|---|---|---|---|---|
 | `gcp4c32rspot` | n2-standard-8 (4 cores, 32 GB) | off (4 CPUs) | pd-balanced | yes | 2 |
-| `gcp8c64rspot` | n4-standard-16 (8 cores, 64 GB) | on (16 CPUs) | hyperdisk-balanced (N4 takes only Hyperdisk), 6000 IOPS, 280 MiB/s | yes | 2 |
+| `gcp8c64rspot` | n4-standard-16 (8 cores, 64 GB) | on (16 CPUs) | hyperdisk-balanced (N4 takes only Hyperdisk), 32000 IOPS (the most a 64 GiB disk allows), 1000 MiB/s | yes | 2 |
 | `gcpl4g24r` | g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB) | off (4 CPUs) | pd-balanced | no | 1 |
 
 ## Accounts and buckets

@@ -89,12 +89,13 @@ vars:
     project: $(vars.project_id)
   cpu_disk_size_gb: 64
   gpu_disk_size_gb: 128
-  # Hyperdisk Balanced boot disks (gcp8c64rspot): double the baseline
-  # (3000 IOPS, 140 MiB/s). Paid above the baseline; GCP refuses values
-  # beyond the disk's size or the machine's limits when it creates the disk
-  # (error in resume.log at node start, not at deploy).
-  hyperdisk_iops: 6000
-  hyperdisk_throughput: 280
+  # Hyperdisk Balanced boot disks (gcp8c64rspot). IOPS at the most a disk
+  # of cpu_disk_size_gb allows (500 per GiB: 64 GiB -> 32000); a larger
+  # value needs a larger disk. Baseline is 3000 IOPS, 140 MiB/s; above it is
+  # paid. GCP refuses values beyond the disk's or the machine's limits when
+  # it creates the disk (error in resume.log at node start, not at deploy).
+  hyperdisk_iops: 32000
+  hyperdisk_throughput: 1000
 
   # Network tag on every cloud node, for firewall rules. The blueprint
   # creates none for now: traffic to and between the nodes is allowed by
