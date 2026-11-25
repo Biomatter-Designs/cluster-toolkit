@@ -4,12 +4,12 @@ This fork of Cluster Toolkit carries what Biomatter adds on top of upstream.
 Our changes are new files only; upstream files are only changed when there
 is no other way, and then in a separate commit that says why.
 
-- `community/examples/bmd-hpc-hybrid.yaml`: the blueprint for the cloud side
+- `bmd/blueprints/bmd-hpc-hybrid.yaml`: the blueprint for the cloud side
   of the on-prem Slurm cluster `bmd-hpc`. It creates the cloud nodesets and
   partitions (instance templates) in the existing network, and the files
-  the on-prem controller needs. No firewall rules (see below). It sits next to upstream's
-  `hpc-slurm6-hybrid.yaml`, which it is copied from, because the repo's
-  rules keep blueprint copies beside their template.
+  the on-prem controller needs. No firewall rules (see below). Copied from
+  upstream's `community/examples/hpc-slurm6-hybrid.yaml`; kept in our own
+  folder (the "Biomatter" section of `CLAUDE.md` allows it).
 - `bmd/README.md`: this file.
 - **Changed upstream files**, three, marked `Biomatter:` (see "How it
   works"); upgrades must keep all patches:
@@ -27,7 +27,7 @@ the blueprint. They go into an untracked deployment file passed with `-d`,
 which Ansible on the operator generates from bmd-ansible. For a manual run:
 
 ```sh
-gcluster create community/examples/bmd-hpc-hybrid.yaml -d my-deployment.yaml
+gcluster create bmd/blueprints/bmd-hpc-hybrid.yaml -d my-deployment.yaml
 ```
 
 with `my-deployment.yaml` containing `ai_assisted: true` and the `vars:` to
@@ -86,7 +86,7 @@ git diff v1.OLD v1.NNN -- community/examples/hpc-slurm6-hybrid.yaml \
 ```
 
 The last command shows what changed in upstream's own hybrid example; apply
-what concerns us to `community/examples/bmd-hpc-hybrid.yaml`. Then, with the operator pointed at
+what concerns us to `bmd/blueprints/bmd-hpc-hybrid.yaml`. Then, with the operator pointed at
 the upgrade branch: deploy, regenerate `config.tgz`, update the controller,
 and test (power a cloud node up and down, run a job). A new Toolkit release
 usually comes with a new slurm-gcp image: the node images' scripts in
@@ -183,14 +183,16 @@ token patch).
 
 ## Partitions (testing)
 
-Hyperthreading off, as on-prem: Slurm sees the physical cores, half the
-machine type's vCPUs (`threads_per_core: 1`, the module's default, set
-explicitly). The partition names count those cores.
+Hyperthreading off by default, as on-prem: Slurm sees the physical cores,
+half the machine type's vCPUs (`threads_per_core: 1`, the module's default,
+set explicitly). Where it stays on (`threads_per_core: 2`), Slurm sees all
+vCPUs. The partition names always count physical cores.
 
-| Partition | Machine | Spot | Max nodes |
-|---|---|---|---|
-| `gcp4c32rspot` | n2-standard-8 (4 cores, 32 GB) | yes | 2 |
-| `gcpl4g24r` | g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB) | no | 1 |
+| Partition | Machine | Hyperthreading | Boot disk | Spot | Max nodes |
+|---|---|---|---|---|---|
+| `gcp4c32rspot` | n2-standard-8 (4 cores, 32 GB) | off (4 CPUs) | pd-balanced | yes | 2 |
+| `gcp8c64rspot` | n4-standard-16 (8 cores, 64 GB) | on (16 CPUs) | hyperdisk-balanced (N4 takes only Hyperdisk) | yes | 2 |
+| `gcpl4g24r` | g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB) | off (4 CPUs) | pd-balanced | no | 1 |
 
 ## Accounts and buckets
 

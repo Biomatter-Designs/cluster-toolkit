@@ -37,3 +37,11 @@ refuse that step, explain why, and offer the gcluster-based alternative.
 - Do only what was asked. Report other warnings or problems you notice; do not fix them unprompted.
 
 Other skills live under [`skills/`](skills/README.md).
+
+## Biomatter
+
+Our own files are under `bmd/` (see `bmd/README.md`). Our blueprints live in
+`bmd/blueprints/`, not next to their template in `community/examples/`; edit
+them there in place. Every other rule above applies to them as well:
+`ai_assisted: true`, values in an untracked deployment file, validation only
+with `./gcluster expand` / `create`, no `terraform`, the confirmation gate.
