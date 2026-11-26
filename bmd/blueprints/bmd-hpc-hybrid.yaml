@@ -97,7 +97,7 @@ vars:
   gpu_extra_zones: [europe-west4-a, europe-west4-c]
   cpu_disk_size_gb: 64
   gpu_disk_size_gb: 128
-  # Hyperdisk Balanced boot disks (gcp8c64rspot). IOPS at the most a disk
+  # Hyperdisk Balanced boot disks (gcp16c64rspot). IOPS at the most a disk
   # of cpu_disk_size_gb allows (500 per GiB: 64 GiB -> 32000); a larger
   # value needs a larger disk. Baseline is 3000 IOPS, 140 MiB/s; above it is
   # paid. GCP refuses values beyond the disk's or the machine's limits when
@@ -140,7 +140,7 @@ deployment_groups:
   # Hyperthreading on (threads_per_core: 2) everywhere, as on our on-prem
   # nodes: Slurm gets all vCPUs and hands out whole cores (CR_Core_Memory),
   # so two jobs never share a core. GCP bills the machine type's vCPUs
-  # either way. Names count physical cores (n2-standard-8 = 4 cores).
+  # either way. Names count vCPUs, as Slurm shows them (n2-standard-8 = 8).
   #
   # Testing sizes. exclusive: false keeps a node for several jobs until it
   # has been idle for 300 s, instead of deleting it after every job.
@@ -149,13 +149,13 @@ deployment_groups:
   # Wiring is written out (no use: between these modules), so the expanded
   # blueprint lists exactly these partitions and nothing generated.
 
-  # gcp4c32rspot: CPU, n2-standard-8 (4 cores / 8 vCPUs, 32 GB),
+  # gcp8c32rspot: CPU, n2-standard-8 (8 vCPUs = 4 cores, 32 GB),
   # spot, at most 2 nodes
-  - id: gcp4c32rspot_nodeset
+  - id: gcp8c32rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: 4c32rspot
+      name: 8c32rspot
       machine_type: n2-standard-8
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
@@ -190,22 +190,22 @@ deployment_groups:
       metadata: $(vars.node_metadata)
       tags: [$(vars.node_tag)]
 
-  - id: gcp4c32rspot_partition
+  - id: gcp8c32rspot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
     settings:
-      partition_name: gcp4c32rspot
-      nodeset: [$(gcp4c32rspot_nodeset.nodeset)]
+      partition_name: gcp8c32rspot
+      nodeset: [$(gcp8c32rspot_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
-  # gcp8c64rspot: CPU, n4-standard-16 (8 cores, 64 GB), spot, at most 2
+  # gcp16c64rspot: CPU, n4-standard-16 (16 vCPUs, 64 GB), spot, at most 2
   # nodes. Hyperdisk Balanced boot disk (N4 takes only Hyperdisk) with
   # provisioned IOPS and throughput (hyperdisk_iops, hyperdisk_throughput).
-  - id: gcp8c64rspot_nodeset
+  - id: gcp16c64rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: 8c64rspot
+      name: 16c64rspot
       machine_type: n4-standard-16
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
@@ -221,7 +221,7 @@ deployment_groups:
       disk_type: hyperdisk-balanced
       disk_provisioned_iops: $(vars.hyperdisk_iops)
       disk_provisioned_throughput: $(vars.hyperdisk_throughput)
-      # Newest image of the family at every node start, as for gcp4c32rspot.
+      # Newest image of the family at every node start, as for gcp8c32rspot.
       # The IOPS and throughput again: this disk list replaces the template's.
       instance_properties:
         disks:
@@ -238,11 +238,11 @@ deployment_groups:
       metadata: $(vars.node_metadata)
       tags: [$(vars.node_tag)]
 
-  - id: gcp8c64rspot_partition
+  - id: gcp16c64rspot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
     settings:
-      partition_name: gcp8c64rspot
-      nodeset: [$(gcp8c64rspot_nodeset.nodeset)]
+      partition_name: gcp16c64rspot
+      nodeset: [$(gcp16c64rspot_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
@@ -268,7 +268,7 @@ deployment_groups:
       instance_image_custom: true
       disk_size_gb: $(vars.gpu_disk_size_gb)
       disk_type: pd-balanced
-      # Newest image of the family at every node start, as for gcp4c32rspot.
+      # Newest image of the family at every node start, as for gcp8c32rspot.
       instance_properties:
         disks:
         - boot: true
@@ -311,7 +311,7 @@ deployment_groups:
       instance_image_custom: true
       disk_size_gb: $(vars.gpu_disk_size_gb)
       disk_type: pd-balanced
-      # Newest image of the family at every node start, as for gcp4c32rspot.
+      # Newest image of the family at every node start, as for gcp8c32rspot.
       instance_properties:
         disks:
         - boot: true
@@ -344,13 +344,13 @@ deployment_groups:
       # One line per partition above. Each partition module returns a
       # one-item list, hence [0].
       partitions:
-      - $(gcp4c32rspot_partition.partitions[0])
-      - $(gcp8c64rspot_partition.partitions[0])
+      - $(gcp8c32rspot_partition.partitions[0])
+      - $(gcp16c64rspot_partition.partitions[0])
       - $(gcpl4g24r_partition.partitions[0])
       - $(gcpl4g24rspot_partition.partitions[0])
       nodeset:
-      - $(gcp4c32rspot_partition.nodeset[0])
-      - $(gcp8c64rspot_partition.nodeset[0])
+      - $(gcp8c32rspot_partition.nodeset[0])
+      - $(gcp16c64rspot_partition.nodeset[0])
       - $(gcpl4g24r_partition.nodeset[0])
       - $(gcpl4g24rspot_partition.nodeset[0])
       # Not used: dynamic nodesets (VMs started outside slurm-gcp) and TPUs.
