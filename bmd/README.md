@@ -52,6 +52,7 @@ an untracked deployment file on the operator and runs the deploy from there.
 | [partitions.md](docs/partitions.md) | the cloud partitions, adding or changing one |
 | [how-it-works.md](docs/how-it-works.md) | what runs on its own: nodes starting and stopping, the token |
 | [accounts.md](docs/accounts.md) | GCP service accounts and buckets |
+| [storage.md](docs/storage.md) | data and job output on cloud nodes (pilot in progress) |
 | [upgrading.md](docs/upgrading.md) | branches, upstream upgrades |
 | [upstream-changes.md](docs/upstream-changes.md) | our patches to upstream files, and their tests |
 | [disk-benchmark.md](docs/disk-benchmark.md) | PD vs Hyperdisk measurements |

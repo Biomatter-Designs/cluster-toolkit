@@ -55,6 +55,13 @@ vars:
   # read on it, so the deployer has Storage Admin on this bucket.
   slurm_bucket_name:
 
+  # Existing bucket with read-only data for jobs, in the nodes' region
+  # (bmd-hpc-data-<region>), created by hand. Passed to the nodes as
+  # metadata hpc-data-bucket; the image mounts it on /mnt/shared/bucket_data
+  # (bmd-ansible role hpc_cloud_storage_install). Images without that role
+  # ignore it. See bmd/docs/storage.md.
+  data_bucket:
+
   # Start of every cloud node name: <node_name_prefix>-<nodeset name>-<n>,
   # e.g. gcp-l4g24r-0. slurm-gcp calls it the cluster name, but it is not
   # Slurm's ClusterName: in hybrid mode our own slurm.conf sets that, and
@@ -115,6 +122,7 @@ vars:
   # and our users instead. OS Login is turned off with enable_oslogin.
   node_metadata:
     block-project-ssh-keys: "TRUE"
+    hpc-data-bucket: $(vars.data_bucket)
 
 deployment_groups:
 - group: cluster
