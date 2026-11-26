@@ -55,8 +55,14 @@ vars:
   # read on it, so the deployer has Storage Admin on this bucket.
   slurm_bucket_name:
 
+  # Start of every cloud node name: <node_name_prefix>-<nodeset name>-<n>,
+  # e.g. gcp-l4g24r-0. slurm-gcp calls it the cluster name, but it is not
+  # Slurm's ClusterName: in hybrid mode our own slurm.conf sets that, and
+  # accounting uses it. Changing it renames every template: deploy only
+  # when no cloud node is running.
+  node_name_prefix:
+
   # ---- On-prem cluster (bmd-ansible group_vars/hpc) ----
-  cluster_name:
   slurm_version:
   slurm_uid:
   slurm_gid:
@@ -127,12 +133,14 @@ deployment_groups:
   # Names follow the cluster-wide scheme (bmd-ansible,
   # roles/slurmctld_install/README.md "Partition names"):
   #   CPU <where><cpus>c<ram GB>r[spot], GPU <where><model>g<gpu GB>r[spot]
-  # Node names become <cluster_name>-<nodeset name>-<n>.
+  # Node names are <node_name_prefix>-<nodeset name>-<n>: the nodeset name is
+  # the partition name without "gcp" (the prefix already says it), e.g.
+  # partition gcpl4g24r has nodes gcp-l4g24r-0, -1, ...
   #
-  # Hyperthreading is off (threads_per_core: 1) on most, as on our on-prem
-  # nodes: Slurm gets the physical cores, half the machine type's vCPUs.
-  # Where it stays on (said per partition), Slurm gets all vCPUs. Names
-  # always count physical cores.
+  # Hyperthreading on (threads_per_core: 2) everywhere, as on our on-prem
+  # nodes: Slurm gets all vCPUs and hands out whole cores (CR_Core_Memory),
+  # so two jobs never share a core. GCP bills the machine type's vCPUs
+  # either way. Names count physical cores (n2-standard-8 = 4 cores).
   #
   # Testing sizes. exclusive: false keeps a node for several jobs until it
   # has been idle for 300 s, instead of deleting it after every job.
@@ -141,16 +149,17 @@ deployment_groups:
   # Wiring is written out (no use: between these modules), so the expanded
   # blueprint lists exactly these partitions and nothing generated.
 
-  # gcp4c32rspot: CPU, n2-standard-8 (4 cores, hyperthreading off, 32 GB),
+  # gcp4c32rspot: CPU, n2-standard-8 (4 cores / 8 vCPUs, 32 GB),
   # spot, at most 2 nodes
   - id: gcp4c32rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: gcp4c32rspot
+      name: 4c32rspot
       machine_type: n2-standard-8
+      # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
-        threads_per_core: 1
+        threads_per_core: 2
       enable_spot_vm: true
       # Preempted VMs are deleted, not left stopped (with their disk). Must
       # be set: unset, GCP fills in STOP and every plan replaces the template.
@@ -190,14 +199,13 @@ deployment_groups:
       is_default: false
 
   # gcp8c64rspot: CPU, n4-standard-16 (8 cores, 64 GB), spot, at most 2
-  # nodes. Hyperdisk Balanced boot disk (N4 takes only Hyperdisk), default
-  # IOPS and throughput. Hyperthreading stays ON here: Slurm gets all 16
-  # vCPUs (8 cores x 2 threads); the name counts cores, as everywhere.
+  # nodes. Hyperdisk Balanced boot disk (N4 takes only Hyperdisk) with
+  # provisioned IOPS and throughput (hyperdisk_iops, hyperdisk_throughput).
   - id: gcp8c64rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: gcp8c64rspot
+      name: 8c64rspot
       machine_type: n4-standard-16
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
@@ -244,15 +252,16 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: gcpl4g24r
+      name: l4g24r
       machine_type: g2-standard-8
       # L4s run out in one zone (ZONE_RESOURCE_POOL_EXHAUSTED): allow the
       # region's other zones too. resume.py then asks for the region and GCP
       # picks a zone with capacity. The subnet is regional, so the network
       # and the VPN are the same in every zone.
       zones: $(vars.gpu_extra_zones)
+      # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
-        threads_per_core: 1
+        threads_per_core: 2
       node_count_dynamic_max: 10
       enable_placement: false
       instance_image: $(vars.gpu_image)
@@ -287,11 +296,12 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: gcpl4g24rspot
+      name: l4g24rspot
       machine_type: g2-standard-8
       zones: $(vars.gpu_extra_zones)
+      # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
-        threads_per_core: 1
+        threads_per_core: 2
       enable_spot_vm: true
       spot_instance_config:
         termination_action: DELETE
@@ -348,7 +358,7 @@ deployment_groups:
       nodeset_tpu: []
 
       enable_hybrid: true
-      slurm_cluster_name: $(vars.cluster_name)
+      slurm_cluster_name: $(vars.node_name_prefix)
       enable_slurm_auth: true
       # No slurm_key_mount: the key is in our images (bmd-packer). Our patch
       # in setup_network_storage.py keeps nodes from waiting for its export.
