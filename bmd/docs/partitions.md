@@ -10,6 +10,18 @@ stays the default; cloud partitions are chosen with `-p`.
 | `gcpl4g24r` | g2-standard-8 (1× L4 24 GB, 4 cores, 32 GB) | 8 | pd-balanced | no | 10 |
 | `gcpl4g24rspot` | as `gcpl4g24r` | 8 | pd-balanced | yes | 10 |
 
+Node features (shown by `sinfo`, selected with `-C`):
+
+| Partition | GRES | Features |
+|---|---|---|
+| `gcp8c32rspot`, `gcp16c64rspot` | none | `spot` |
+| `gcpl4g24r` | `gpu:nvidia-l4:1` | `l4,gpumem_24,sm_89,ondemand` |
+| `gcpl4g24rspot` | `gpu:nvidia-l4:1` | `l4,gpumem_24,sm_89,spot` |
+
+Users ask for the model by feature and the count untyped: `-C l4
+--gres=gpu:1`. The scheme is cluster-wide (bmd-ansible,
+`roles/slurmctld_install/README.md`, "Node features").
+
 Node names: `gcp-<partition without gcp>-<n>`, e.g. `gcp-l4g24r-0` in
 `gcpl4g24r`. The `gcp` prefix is `hpc_cloud_node_prefix` in bmd-ansible
 (`inventory/group_vars/hpc/cloud.yml`); it is not Slurm's cluster name.
@@ -38,8 +50,9 @@ Node names: `gcp-<partition without gcp>-<n>`, e.g. `gcp-l4g24r-0` in
 ## Adding or changing a partition
 
 1. Copy a node set and partition pair in the blueprint (the closest match),
-   change the names (partition `gcpXYZ`, node set `XYZ`), machine, spot and
-   max nodes. Keep the image block
+   change the names (partition `gcpXYZ`, node set `XYZ`), machine, spot,
+   max nodes and `node_conf` (features; for GPUs also `Gres` with GCP's
+   accelerator name). Keep the image block
    (`instance_properties`) and set its disk type to the node set's.
 2. Add the partition to the controller module's `partitions` and `nodeset`
    lists at the end of the blueprint.

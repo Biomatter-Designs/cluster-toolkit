@@ -146,6 +146,10 @@ deployment_groups:
   # has been idle for 300 s, instead of deleting it after every job.
   # is_default: false keeps the on-prem partition the default.
   #
+  # Node features (node_conf), the same scheme as on-prem (bmd-ansible,
+  # roles/slurmctld_install/README.md "Node features"): GPU model short name,
+  # gpumem_<GB>, sm_<compute capability>, spot / ondemand.
+  #
   # Wiring is written out (no use: between these modules), so the expanded
   # blueprint lists exactly these partitions and nothing generated.
 
@@ -160,6 +164,8 @@ deployment_groups:
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
         threads_per_core: 2
+      node_conf:
+        Features: spot
       enable_spot_vm: true
       # Preempted VMs are deleted, not left stopped (with their disk). Must
       # be set: unset, GCP fills in STOP and every plan replaces the template.
@@ -210,6 +216,8 @@ deployment_groups:
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
         threads_per_core: 2
+      node_conf:
+        Features: spot
       enable_spot_vm: true
       spot_instance_config:
         termination_action: DELETE
@@ -262,6 +270,11 @@ deployment_groups:
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
         threads_per_core: 2
+      # Typed GRES: the type must match cloud_gres.conf (GCP's accelerator
+      # name). Short model name as a feature, so users write -C l4 --gres=gpu:1.
+      node_conf:
+        Gres: gpu:nvidia-l4:1
+        Features: l4,gpumem_24,sm_89,ondemand
       node_count_dynamic_max: 10
       enable_placement: false
       instance_image: $(vars.gpu_image)
@@ -302,6 +315,9 @@ deployment_groups:
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
         threads_per_core: 2
+      node_conf:
+        Gres: gpu:nvidia-l4:1
+        Features: l4,gpumem_24,sm_89,spot
       enable_spot_vm: true
       spot_instance_config:
         termination_action: DELETE
