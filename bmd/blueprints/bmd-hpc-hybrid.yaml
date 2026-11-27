@@ -162,9 +162,11 @@ deployment_groups:
   #   CPU gcp-<region>-<cpus>c<ram GB>r[spot], GPU gcp-<region>-<model>g<gpu GB>r[spot]
   # Region short names: euw4 = europe-west4, euw1 = europe-west1. One
   # partition never spans regions; users pick several with -p a,b.
-  # Node names are <node_name_prefix>-<nodeset name>-<n>: the nodeset name is
-  # the partition name without "gcp-" (the prefix already says it), e.g.
-  # partition gcp-euw4-l4g24r has nodes gcp-euw4-l4g24r-0, -1, ...
+  # Node names are <node_name_prefix>-<nodeset name>-<n>. The module strips
+  # hyphens from nodeset names, so a nodeset is the machine part with the
+  # region appended: partition gcp-euw4-l4g24r, nodeset l4g24reuw4, nodes
+  # gcp-l4g24reuw4-0, -1, ... (region first would run into the digits:
+  # euw48c32rspot).
   #
   # Hyperthreading on (threads_per_core: 2) everywhere, as on our on-prem
   # nodes: Slurm gets all vCPUs and hands out whole cores (CR_Core_Memory),
@@ -189,7 +191,7 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: euw4-8c32rspot
+      name: 8c32rspoteuw4
       machine_type: n2-standard-8
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
@@ -241,7 +243,7 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: euw4-16c64rspot
+      name: 16c64rspoteuw4
       machine_type: n4-standard-16
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
@@ -290,7 +292,7 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: euw4-l4g24r
+      name: l4g24reuw4
       machine_type: g2-standard-8
       # L4s run out in one zone (ZONE_RESOURCE_POOL_EXHAUSTED): allow the
       # region's other zones too. resume.py then asks for the region and GCP
@@ -339,7 +341,7 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: euw4-l4g24rspot
+      name: l4g24rspoteuw4
       machine_type: g2-standard-8
       zones: $(vars.gpu_extra_zones)
       # 2, not left out: the module's default is 1 (hyperthreading off).
@@ -386,7 +388,7 @@ deployment_groups:
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network_euw1]
     settings:
-      name: euw1-8c32rspot
+      name: 8c32rspoteuw1
       region: $(vars.region_euw1)
       zone: $(vars.zone_euw1)
       machine_type: n2-standard-8

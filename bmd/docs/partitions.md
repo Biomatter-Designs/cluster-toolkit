@@ -27,8 +27,11 @@ Users ask for the model by feature and the count untyped: `-C l4
 --gres=gpu:1`. The scheme is cluster-wide (bmd-ansible,
 `roles/slurmctld_install/README.md`, "Node features").
 
-Node names: `gcp-<partition without gcp->-<n>`, e.g. `gcp-euw4-l4g24r-0` in
-`gcp-euw4-l4g24r`. The `gcp` prefix is `hpc_cloud_node_prefix` in bmd-ansible
+Node names: `gcp-<machine part><region>-<n>`, e.g. `gcp-l4g24reuw4-0` in
+`gcp-euw4-l4g24r`, `gcp-8c32rspoteuw1-0` in `gcp-euw1-8c32rspot`. The node
+set name can't have hyphens (the module strips them), so the region goes
+last; first, it would run into the digits (`euw48c32rspot`). The `gcp`
+prefix is `hpc_cloud_node_prefix` in bmd-ansible
 (`inventory/group_vars/hpc/cloud.yml`); it is not Slurm's cluster name.
 
 ## Rules every partition follows
@@ -62,7 +65,7 @@ Node names: `gcp-<partition without gcp->-<n>`, e.g. `gcp-euw4-l4g24r-0` in
 
 1. Copy a node set and partition pair in the blueprint (the closest match,
    in the same region), change the names (partition `gcp-<region>-XYZ`,
-   node set `<region>-XYZ`, module ids `<region>_XYZ_…`), machine, spot,
+   node set `XYZ<region>`, module ids `<region>_XYZ_…`), machine, spot,
    max nodes and `node_conf` (features; for GPUs also `Gres` with GCP's
    accelerator name). Keep the image block
    (`instance_properties`) and set its disk type to the node set's.
