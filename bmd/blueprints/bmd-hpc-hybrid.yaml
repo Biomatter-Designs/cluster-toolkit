@@ -62,7 +62,7 @@ vars:
   # regions have their own region_<short>/zone_<short>.
   # Data bucket: read-only data for jobs, bmd-hpc-data-<region>, created
   # outside (bmd-infra-terraform). Passed to the nodes as metadata
-  # hpc-data-bucket; the image mounts it on /mnt/shared/bucket_data
+  # hpc-data-bucket; the image mounts it on /mnt/shared
   # (bmd-ansible role hpc_cloud_storage_install). See bmd/docs/storage.md.
   data_bucket_euw4:
   region_euw1:

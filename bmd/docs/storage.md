@@ -12,7 +12,7 @@ is preempted. The design gives them three things:
 
 | Need | How |
 |---|---|
-| read-only data (datasets, DBs, models) | regional bucket, mounted read-only with gcsfuse on `/mnt/shared/bucket_data` |
+| read-only data (datasets, DBs, models) | regional bucket, mounted read-only with gcsfuse on `/mnt/shared` |
 | job output that survives preemption | local disk `/scratch/<jobid>`, copied to a results bucket during the job |
 | results back on-prem | login node pulls them from the bucket into the results path (*TBD*) |
 
@@ -36,9 +36,12 @@ as node metadata (`hpc-data-bucket`, from `vars.data_bucket_<region>` via
 `node_metadata_<region>`, per nodeset), and the
 mount reads that. The region in the name is only for people.
 
-At boot the node mounts the newest ready version on
-`/mnt/shared/bucket_data`, read-only for everyone:
-`gs://<bucket>/v0001/datasets/x` is `/mnt/shared/bucket_data/datasets/x`.
+At boot the node mounts the newest ready version on `/mnt/shared`,
+read-only for everyone: `gs://<bucket>/v0001/datasets/x` is
+`/mnt/shared/datasets/x`. The paths match the on-prem NFS shares
+(`/mnt/shared/{datasets,db,models}`), but on cloud nodes all of
+`/mnt/shared` is read-only and there is no `/mnt/shared/tmp`: jobs write to
+`/scratch/<jobid>`.
 A new version reaches only nodes that boot after it is published. If the
 mount fails the node still joins (for now, to keep troubleshooting
 simple); `journalctl -u hpc-data-mount` on the node says why.
