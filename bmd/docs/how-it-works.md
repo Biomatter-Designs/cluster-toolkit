@@ -9,7 +9,8 @@ for that. To change something, see [deploying.md](deploying.md).
 ```
  user (login node)          controller                       GCP
  ─────────────────          ──────────                       ───
- sbatch -p gcp8c32rspot ──► no node up: resume.py      ──►   new VM from the template
+ sbatch -p
+   gcp-euw4-8c32rspot  ──►  no node up: resume.py      ──►   new VM from the template
                                                              boots our newest image
                             slurmd registers   ◄── VPN ──    reads config from the bucket
                             job runs on the node

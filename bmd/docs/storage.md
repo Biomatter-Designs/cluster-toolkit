@@ -1,7 +1,8 @@
 # Storage on cloud nodes
 
 > **Status: pilot in progress.** This page describes the agreed design; the
-> pilot runs in europe-west4 on `gcp8c32rspot` with the CPU image. Done so
+> pilot runs in europe-west4 on `gcp-euw4-8c32rspot` with the CPU image, and
+> europe-west1 (`gcp-euw1-8c32rspot`) for the bucket copy. Done so
 > far: the data bucket `bmd-hpc-data-europe-west4`; the node side of its
 > mount is written (bmd-ansible role `hpc_cloud_storage_install`), the image
 > not built yet. Paths and intervals marked *TBD* are still open.
@@ -31,7 +32,8 @@ gs://bmd-hpc-data-<region>/v0001/{datasets,db,models}/...
 ```
 
 Nodes don't derive the bucket from their region: the blueprint passes it
-as node metadata (`hpc-data-bucket`, from `vars.data_bucket`), and the
+as node metadata (`hpc-data-bucket`, from `vars.data_bucket_<region>` via
+`node_metadata_<region>`, per nodeset), and the
 mount reads that. The region in the name is only for people.
 
 At boot the node mounts the newest ready version on

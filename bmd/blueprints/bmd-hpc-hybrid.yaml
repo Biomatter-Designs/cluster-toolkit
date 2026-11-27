@@ -55,12 +55,19 @@ vars:
   # read on it, so the deployer has Storage Admin on this bucket.
   slurm_bucket_name:
 
-  # Existing bucket with read-only data for jobs, in the nodes' region
-  # (bmd-hpc-data-<region>), created by hand. Passed to the nodes as
-  # metadata hpc-data-bucket; the image mounts it on /mnt/shared/bucket_data
-  # (bmd-ansible role hpc_cloud_storage_install). Images without that role
-  # ignore it. See bmd/docs/storage.md.
-  data_bucket:
+  # ---- Regions (bmd-ansible hpc_cloud_regions) ----
+  # One set per region, short name euw4, euw1, ... Every nodeset takes its
+  # region's values. region/zone above are the main region (euw4): its
+  # nodesets, the config bucket and the controller module use them; other
+  # regions have their own region_<short>/zone_<short>.
+  # Data bucket: read-only data for jobs, bmd-hpc-data-<region>, created
+  # outside (bmd-infra-terraform). Passed to the nodes as metadata
+  # hpc-data-bucket; the image mounts it on /mnt/shared/bucket_data
+  # (bmd-ansible role hpc_cloud_storage_install). See bmd/docs/storage.md.
+  data_bucket_euw4:
+  region_euw1:
+  zone_euw1:
+  data_bucket_euw1:
 
   # Start of every cloud node name: <node_name_prefix>-<nodeset name>-<n>,
   # e.g. gcp-l4g24r-0. slurm-gcp calls it the cluster name, but it is not
@@ -104,8 +111,8 @@ vars:
   gpu_extra_zones: [europe-west4-a, europe-west4-c]
   cpu_disk_size_gb: 64
   gpu_disk_size_gb: 128
-  # Hyperdisk Balanced boot disks (gcp16c64rspot). IOPS at the most a disk
-  # of cpu_disk_size_gb allows (500 per GiB: 64 GiB -> 32000); a larger
+  # Hyperdisk Balanced boot disks (gcp-euw4-16c64rspot). IOPS at the most a
+  # disk of cpu_disk_size_gb allows (500 per GiB: 64 GiB -> 32000); a larger
   # value needs a larger disk. Baseline is 3000 IOPS, 140 MiB/s; above it is
   # paid. GCP refuses values beyond the disk's or the machine's limits when
   # it creates the disk (error in resume.log at node start, not at deploy).
@@ -122,16 +129,28 @@ vars:
   # and our users instead. OS Login is turned off with enable_oslogin.
   node_metadata:
     block-project-ssh-keys: "TRUE"
-    hpc-data-bucket: $(vars.data_bucket)
+  # The same plus the region's data bucket; each nodeset takes its region's.
+  node_metadata_euw4: $(merge(vars.node_metadata, {"hpc-data-bucket" = vars.data_bucket_euw4}))
+  node_metadata_euw1: $(merge(vars.node_metadata, {"hpc-data-bucket" = vars.data_bucket_euw1}))
 
 deployment_groups:
 - group: cluster
   modules:
+  # One module per region: the same VPC, the subnet of that region (all
+  # named subnetwork_name). "network" is the main region (euw4); the
+  # controller module uses it too.
   - id: network
     source: modules/network/pre-existing-vpc
     settings:
       network_name: $(vars.network_name)
       subnetwork_name: $(vars.subnetwork_name)
+
+  - id: network_euw1
+    source: modules/network/pre-existing-vpc
+    settings:
+      network_name: $(vars.network_name)
+      subnetwork_name: $(vars.subnetwork_name)
+      region: $(vars.region_euw1)
 
   # ---- Partitions ----
   # Each cloud partition is two modules:
@@ -139,11 +158,13 @@ deployment_groups:
   #              type, image, disk, account, how many at most
   #   partition: the Slurm partition (queue) on top of it
   # Names follow the cluster-wide scheme (bmd-ansible,
-  # roles/slurmctld_install/README.md "Partition names"):
-  #   CPU <where><cpus>c<ram GB>r[spot], GPU <where><model>g<gpu GB>r[spot]
+  # roles/slurmctld_install/README.md "Partition names"), with the region:
+  #   CPU gcp-<region>-<cpus>c<ram GB>r[spot], GPU gcp-<region>-<model>g<gpu GB>r[spot]
+  # Region short names: euw4 = europe-west4, euw1 = europe-west1. One
+  # partition never spans regions; users pick several with -p a,b.
   # Node names are <node_name_prefix>-<nodeset name>-<n>: the nodeset name is
-  # the partition name without "gcp" (the prefix already says it), e.g.
-  # partition gcpl4g24r has nodes gcp-l4g24r-0, -1, ...
+  # the partition name without "gcp-" (the prefix already says it), e.g.
+  # partition gcp-euw4-l4g24r has nodes gcp-euw4-l4g24r-0, -1, ...
   #
   # Hyperthreading on (threads_per_core: 2) everywhere, as on our on-prem
   # nodes: Slurm gets all vCPUs and hands out whole cores (CR_Core_Memory),
@@ -161,13 +182,14 @@ deployment_groups:
   # Wiring is written out (no use: between these modules), so the expanded
   # blueprint lists exactly these partitions and nothing generated.
 
-  # gcp8c32rspot: CPU, n2-standard-8 (8 vCPUs = 4 cores, 32 GB),
+  # ---- europe-west4 (euw4), the main region ----
+  # gcp-euw4-8c32rspot: CPU, n2-standard-8 (8 vCPUs = 4 cores, 32 GB),
   # spot, at most 2 nodes
-  - id: gcp8c32rspot_nodeset
+  - id: euw4_8c32rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: 8c32rspot
+      name: euw4-8c32rspot
       machine_type: n2-standard-8
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
@@ -201,25 +223,25 @@ deployment_groups:
             diskType: pd-balanced
       service_account_email: $(vars.compute_service_account_email)
       enable_oslogin: false
-      metadata: $(vars.node_metadata)
+      metadata: $(vars.node_metadata_euw4)
       tags: [$(vars.node_tag)]
 
-  - id: gcp8c32rspot_partition
+  - id: euw4_8c32rspot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
     settings:
-      partition_name: gcp8c32rspot
-      nodeset: [$(gcp8c32rspot_nodeset.nodeset)]
+      partition_name: gcp-euw4-8c32rspot
+      nodeset: [$(euw4_8c32rspot_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
-  # gcp16c64rspot: CPU, n4-standard-16 (16 vCPUs, 64 GB), spot, at most 2
+  # gcp-euw4-16c64rspot: CPU, n4-standard-16 (16 vCPUs, 64 GB), spot, at most 2
   # nodes. Hyperdisk Balanced boot disk (N4 takes only Hyperdisk) with
   # provisioned IOPS and throughput (hyperdisk_iops, hyperdisk_throughput).
-  - id: gcp16c64rspot_nodeset
+  - id: euw4_16c64rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: 16c64rspot
+      name: euw4-16c64rspot
       machine_type: n4-standard-16
       # 2, not left out: the module's default is 1 (hyperthreading off).
       advanced_machine_features:
@@ -237,7 +259,7 @@ deployment_groups:
       disk_type: hyperdisk-balanced
       disk_provisioned_iops: $(vars.hyperdisk_iops)
       disk_provisioned_throughput: $(vars.hyperdisk_throughput)
-      # Newest image of the family at every node start, as for gcp8c32rspot.
+      # Newest image of the family at every node start, as for gcp-euw4-8c32rspot.
       # The IOPS and throughput again: this disk list replaces the template's.
       instance_properties:
         disks:
@@ -251,24 +273,24 @@ deployment_groups:
             provisionedThroughput: $(vars.hyperdisk_throughput)
       service_account_email: $(vars.compute_service_account_email)
       enable_oslogin: false
-      metadata: $(vars.node_metadata)
+      metadata: $(vars.node_metadata_euw4)
       tags: [$(vars.node_tag)]
 
-  - id: gcp16c64rspot_partition
+  - id: euw4_16c64rspot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
     settings:
-      partition_name: gcp16c64rspot
-      nodeset: [$(gcp16c64rspot_nodeset.nodeset)]
+      partition_name: gcp-euw4-16c64rspot
+      nodeset: [$(euw4_16c64rspot_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
-  # gcpl4g24r: GPU, g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB), on-demand,
+  # gcp-euw4-l4g24r: GPU, g2-standard-8 (1x L4 24 GB, 4 cores, 32 GB), on-demand,
   # at most 10 nodes
-  - id: gcpl4g24r_nodeset
+  - id: euw4_l4g24r_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: l4g24r
+      name: euw4-l4g24r
       machine_type: g2-standard-8
       # L4s run out in one zone (ZONE_RESOURCE_POOL_EXHAUSTED): allow the
       # region's other zones too. resume.py then asks for the region and GCP
@@ -289,7 +311,7 @@ deployment_groups:
       instance_image_custom: true
       disk_size_gb: $(vars.gpu_disk_size_gb)
       disk_type: pd-balanced
-      # Newest image of the family at every node start, as for gcp8c32rspot.
+      # Newest image of the family at every node start, as for gcp-euw4-8c32rspot.
       instance_properties:
         disks:
         - boot: true
@@ -300,24 +322,24 @@ deployment_groups:
             diskType: pd-balanced
       service_account_email: $(vars.compute_service_account_email)
       enable_oslogin: false
-      metadata: $(vars.node_metadata)
+      metadata: $(vars.node_metadata_euw4)
       tags: [$(vars.node_tag)]
 
-  - id: gcpl4g24r_partition
+  - id: euw4_l4g24r_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
     settings:
-      partition_name: gcpl4g24r
-      nodeset: [$(gcpl4g24r_nodeset.nodeset)]
+      partition_name: gcp-euw4-l4g24r
+      nodeset: [$(euw4_l4g24r_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
-  # gcpl4g24rspot: as gcpl4g24r, but spot (deleted when GCP takes it back),
-  # at most 10 nodes. Same zones.
-  - id: gcpl4g24rspot_nodeset
+  # gcp-euw4-l4g24rspot: as gcp-euw4-l4g24r, but spot (deleted when GCP
+  # takes it back), at most 10 nodes. Same zones.
+  - id: euw4_l4g24rspot_nodeset
     source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
     use: [network]
     settings:
-      name: l4g24rspot
+      name: euw4-l4g24rspot
       machine_type: g2-standard-8
       zones: $(vars.gpu_extra_zones)
       # 2, not left out: the module's default is 1 (hyperthreading off).
@@ -335,7 +357,7 @@ deployment_groups:
       instance_image_custom: true
       disk_size_gb: $(vars.gpu_disk_size_gb)
       disk_type: pd-balanced
-      # Newest image of the family at every node start, as for gcp8c32rspot.
+      # Newest image of the family at every node start, as for gcp-euw4-8c32rspot.
       instance_properties:
         disks:
         - boot: true
@@ -346,14 +368,60 @@ deployment_groups:
             diskType: pd-balanced
       service_account_email: $(vars.compute_service_account_email)
       enable_oslogin: false
-      metadata: $(vars.node_metadata)
+      metadata: $(vars.node_metadata_euw4)
       tags: [$(vars.node_tag)]
 
-  - id: gcpl4g24rspot_partition
+  - id: euw4_l4g24rspot_partition
     source: community/modules/compute/schedmd-slurm-gcp-v6-partition
     settings:
-      partition_name: gcpl4g24rspot
-      nodeset: [$(gcpl4g24rspot_nodeset.nodeset)]
+      partition_name: gcp-euw4-l4g24rspot
+      nodeset: [$(euw4_l4g24rspot_nodeset.nodeset)]
+      exclusive: false
+      is_default: false
+
+  # ---- europe-west1 (euw1) ----
+  # gcp-euw1-8c32rspot: as gcp-euw4-8c32rspot, in europe-west1. Second
+  # region for the storage pilot (bucket replication); at most 2 nodes.
+  - id: euw1_8c32rspot_nodeset
+    source: community/modules/compute/schedmd-slurm-gcp-v6-nodeset
+    use: [network_euw1]
+    settings:
+      name: euw1-8c32rspot
+      region: $(vars.region_euw1)
+      zone: $(vars.zone_euw1)
+      machine_type: n2-standard-8
+      advanced_machine_features:
+        threads_per_core: 2
+      node_conf:
+        Features: spot
+      enable_spot_vm: true
+      spot_instance_config:
+        termination_action: DELETE
+      node_count_dynamic_max: 2
+      enable_placement: false
+      instance_image: $(vars.cpu_image)
+      instance_image_custom: true
+      disk_size_gb: $(vars.cpu_disk_size_gb)
+      disk_type: pd-balanced
+      # Newest image of the family at every node start, as for gcp-euw4-8c32rspot.
+      instance_properties:
+        disks:
+        - boot: true
+          autoDelete: true
+          initializeParams:
+            sourceImage: projects/$(vars.project_id)/global/images/family/$(vars.cpu_image_family)
+            diskSizeGb: $(vars.cpu_disk_size_gb)
+            diskType: pd-balanced
+      service_account_email: $(vars.compute_service_account_email)
+      enable_oslogin: false
+      metadata: $(vars.node_metadata_euw1)
+      tags: [$(vars.node_tag)]
+
+  - id: euw1_8c32rspot_partition
+    source: community/modules/compute/schedmd-slurm-gcp-v6-partition
+    settings:
+      partition_name: gcp-euw1-8c32rspot
+      nodeset: [$(euw1_8c32rspot_nodeset.nodeset)]
       exclusive: false
       is_default: false
 
@@ -368,15 +436,17 @@ deployment_groups:
       # One line per partition above. Each partition module returns a
       # one-item list, hence [0].
       partitions:
-      - $(gcp8c32rspot_partition.partitions[0])
-      - $(gcp16c64rspot_partition.partitions[0])
-      - $(gcpl4g24r_partition.partitions[0])
-      - $(gcpl4g24rspot_partition.partitions[0])
+      - $(euw4_8c32rspot_partition.partitions[0])
+      - $(euw4_16c64rspot_partition.partitions[0])
+      - $(euw4_l4g24r_partition.partitions[0])
+      - $(euw4_l4g24rspot_partition.partitions[0])
+      - $(euw1_8c32rspot_partition.partitions[0])
       nodeset:
-      - $(gcp8c32rspot_partition.nodeset[0])
-      - $(gcp16c64rspot_partition.nodeset[0])
-      - $(gcpl4g24r_partition.nodeset[0])
-      - $(gcpl4g24rspot_partition.nodeset[0])
+      - $(euw4_8c32rspot_partition.nodeset[0])
+      - $(euw4_16c64rspot_partition.nodeset[0])
+      - $(euw4_l4g24r_partition.nodeset[0])
+      - $(euw4_l4g24rspot_partition.nodeset[0])
+      - $(euw1_8c32rspot_partition.nodeset[0])
       # Not used: dynamic nodesets (VMs started outside slurm-gcp) and TPUs.
       nodeset_dyn: []
       nodeset_tpu: []

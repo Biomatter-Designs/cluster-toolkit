@@ -3,35 +3,43 @@
 All defined in `bmd/blueprints/bmd-hpc-hybrid.yaml`. The on-prem partition
 stays the default; cloud partitions are chosen with `-p`.
 
-| Partition | Machine | CPUs in Slurm | Boot disk | Spot | Max nodes |
-|---|---|---|---|---|---|
-| `gcp8c32rspot` | n2-standard-8 (4 cores, 32 GB) | 8 | pd-balanced | yes | 2 |
-| `gcp16c64rspot` | n4-standard-16 (8 cores, 64 GB) | 16 | Hyperdisk Balanced, 32000 IOPS, 1000 MiB/s | yes | 2 |
-| `gcpl4g24r` | g2-standard-8 (1× L4 24 GB, 4 cores, 32 GB) | 8 | pd-balanced | no | 10 |
-| `gcpl4g24rspot` | as `gcpl4g24r` | 8 | pd-balanced | yes | 10 |
+| Partition | Region | Machine | CPUs in Slurm | Boot disk | Spot | Max nodes |
+|---|---|---|---|---|---|---|
+| `gcp-euw4-8c32rspot` | europe-west4 | n2-standard-8 (4 cores, 32 GB) | 8 | pd-balanced | yes | 2 |
+| `gcp-euw4-16c64rspot` | europe-west4 | n4-standard-16 (8 cores, 64 GB) | 16 | Hyperdisk Balanced, 32000 IOPS, 1000 MiB/s | yes | 2 |
+| `gcp-euw4-l4g24r` | europe-west4 | g2-standard-8 (1× L4 24 GB, 4 cores, 32 GB) | 8 | pd-balanced | no | 10 |
+| `gcp-euw4-l4g24rspot` | europe-west4 | as `gcp-euw4-l4g24r` | 8 | pd-balanced | yes | 10 |
+| `gcp-euw1-8c32rspot` | europe-west1 | n2-standard-8 (4 cores, 32 GB) | 8 | pd-balanced | yes | 2 |
+
+One partition never spans regions. "Wherever there is room" is
+`-p gcp-euw4-8c32rspot,gcp-euw1-8c32rspot`; Slurm runs the job in one of
+them.
 
 Node features (shown by `sinfo`, selected with `-C`):
 
 | Partition | GRES | Features |
 |---|---|---|
-| `gcp8c32rspot`, `gcp16c64rspot` | none | `spot` |
-| `gcpl4g24r` | `gpu:nvidia-l4:1` | `l4,gpumem_24,sm_89,ondemand` |
-| `gcpl4g24rspot` | `gpu:nvidia-l4:1` | `l4,gpumem_24,sm_89,spot` |
+| `gcp-euw4-8c32rspot`, `gcp-euw4-16c64rspot`, `gcp-euw1-8c32rspot` | none | `spot` |
+| `gcp-euw4-l4g24r` | `gpu:nvidia-l4:1` | `l4,gpumem_24,sm_89,ondemand` |
+| `gcp-euw4-l4g24rspot` | `gpu:nvidia-l4:1` | `l4,gpumem_24,sm_89,spot` |
 
 Users ask for the model by feature and the count untyped: `-C l4
 --gres=gpu:1`. The scheme is cluster-wide (bmd-ansible,
 `roles/slurmctld_install/README.md`, "Node features").
 
-Node names: `gcp-<partition without gcp>-<n>`, e.g. `gcp-l4g24r-0` in
-`gcpl4g24r`. The `gcp` prefix is `hpc_cloud_node_prefix` in bmd-ansible
+Node names: `gcp-<partition without gcp->-<n>`, e.g. `gcp-euw4-l4g24r-0` in
+`gcp-euw4-l4g24r`. The `gcp` prefix is `hpc_cloud_node_prefix` in bmd-ansible
 (`inventory/group_vars/hpc/cloud.yml`); it is not Slurm's cluster name.
 
 ## Rules every partition follows
 
 - **Names** follow the cluster-wide scheme (bmd-ansible,
-  `roles/slurmctld_install/README.md`): `<where><cores>c<RAM GB>r[spot]`,
-  GPUs `<where><model>g<GPU GB>r[spot]`. The name counts vCPUs, as `sinfo`
-  shows them and as in the machine type (n2-standard-**8** → `gcp8c32rspot`).
+  `roles/slurmctld_install/README.md`), with the region:
+  `gcp-<region>-<cpus>c<RAM GB>r[spot]`, GPUs
+  `gcp-<region>-<model>g<GPU GB>r[spot]`. Regions by short name: `euw4`
+  (europe-west4), `euw1` (europe-west1). The name counts vCPUs, as `sinfo`
+  shows them and as in the machine type (n2-standard-**8** →
+  `gcp-euw4-8c32rspot`).
 - **Hyperthreading on** (`threads_per_core: 2`, set explicitly: the module's
   default is 1), as on-prem: Slurm gets all vCPUs and hands out whole cores,
   so `-c 1` gets 2 CPUs and two jobs never share a core. GCP bills the
@@ -45,12 +53,16 @@ Node names: `gcp-<partition without gcp>-<n>`, e.g. `gcp-l4g24r-0` in
 - **Shared nodes:** `exclusive: false`; a node is deleted after 300 s idle.
 - **GPU partitions use three zones** (europe-west4-a, -b, -c): L4s often
   run out in one zone, and GCP then picks a zone that has them. CPU
-  partitions stay in -b.
+  partitions stay in one zone (`zone` of the region in bmd-ansible's
+  `hpc_cloud_regions`).
+- **Each region has its own data bucket**, passed to its nodes as metadata
+  ([storage.md](storage.md)).
 
 ## Adding or changing a partition
 
-1. Copy a node set and partition pair in the blueprint (the closest match),
-   change the names (partition `gcpXYZ`, node set `XYZ`), machine, spot,
+1. Copy a node set and partition pair in the blueprint (the closest match,
+   in the same region), change the names (partition `gcp-<region>-XYZ`,
+   node set `<region>-XYZ`, module ids `<region>_XYZ_…`), machine, spot,
    max nodes and `node_conf` (features; for GPUs also `Gres` with GCP's
    accelerator name). Keep the image block
    (`instance_properties`) and set its disk type to the node set's.
@@ -65,9 +77,26 @@ Node names: `gcp-<partition without gcp>-<n>`, e.g. `gcp-l4g24r-0` in
 Also list the new name in bmd-ansible's `slurmctld_install` and
 `hpc_cloud_deploy` READMEs.
 
+## Adding a region
+
+1. Outside (bmd-infra-terraform): the subnet in the region (same name as
+   the others), its data bucket (copy of the others, read for
+   `hpc-slurm-compute-node`), quota. On-prem: the office firewall and the
+   VPN pass the new range to the controller and login node.
+2. bmd-ansible: an entry in `hpc_cloud_regions`
+   (`inventory/group_vars/hpc/cloud.yml`), and one ufw rule each on the
+   controller (6817) and login node (60001–63000) in their `host_vars`;
+   run both hosts' playbooks with the ufw tag.
+3. Blueprint: `region_<short>`, `zone_<short>`, `data_bucket_<short>` and
+   `node_metadata_<short>` in `vars`; a `network_<short>` module
+   (`pre-existing-vpc` with `region`); node sets with `use:
+   [network_<short>]`, `region`, `zone` and `metadata:
+   $(vars.node_metadata_<short>)`.
+4. Copy the data into the new bucket (`_READY` last), then deploy as above.
+
 ## Hyperdisk
 
-N4 machines take only Hyperdisk. `gcp16c64rspot` provisions 32000 IOPS (the
+N4 machines take only Hyperdisk. `gcp-euw4-16c64rspot` provisions 32000 IOPS (the
 most a 64 GiB disk allows) and 1000 MiB/s (`hyperdisk_iops`,
 `hyperdisk_throughput`); above the baseline of 3000 / 140 it is paid.
 Measured: the disk delivers what is provisioned, and helps parallel I/O

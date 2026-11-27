@@ -35,7 +35,8 @@ an untracked deployment file on the operator and runs the deploy from there.
 ## How it differs from upstream's hybrid example
 
 - **No network and no firewall rules:** nodes use the project's existing
-  subnet (europe-west4, 10.2.0.0/16); firewall rules are managed outside.
+  subnet in each region (europe-west4 10.2.0.0/16, europe-west1
+  10.3.0.0/16); firewall rules are managed outside.
 - **Our own images** (bmd-packer `hpc/`): our Slurm build, users, the Slurm
   key. A node boots the newest image of its family, without a deploy.
 - **No NFS from the controller:** the key and the users are in the images.
